@@ -1,0 +1,84 @@
+The MPI test test_mpi for C in mode normal failed to compile with the following output:
+Change Dir: /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_bebbf/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_bebbf.dir/build.make CMakeFiles/cmTC_bebbf.dir/build
+gmake[1]: Entering directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_bebbf.dir/test_mpi.c.o
+/usr/bin/cc  -isystem /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/include -assume-aligned  -o CMakeFiles/cmTC_bebbf.dir/test_mpi.c.o -c /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/cmake-3.23.1-kp2hwkap5osa4dxmgqxtwhwlxo64siif/share/cmake-3.23/Modules/FindMPI/test_mpi.c
+cc: error: unrecognized command line option ‘-assume-aligned’; did you mean ‘-Wif-not-aligned’?
+gmake[1]: *** [CMakeFiles/cmTC_bebbf.dir/build.make:78: CMakeFiles/cmTC_bebbf.dir/test_mpi.c.o] Error 1
+gmake[1]: Leaving directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_bebbf/fast] Error 2
+
+
+
+The MPI test test_mpi for CXX in mode normal failed to compile with the following output:
+Change Dir: /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_4a380/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_4a380.dir/build.make CMakeFiles/cmTC_4a380.dir/build
+gmake[1]: Entering directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_4a380.dir/test_mpi.cpp.o
+/usr/bin/c++  -isystem /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/include -assume-aligned  -std=gnu++17 -o CMakeFiles/cmTC_4a380.dir/test_mpi.cpp.o -c /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/FindMPI/test_mpi.cpp
+c++: error: unrecognized command line option ‘-assume-aligned’; did you mean ‘-Wif-not-aligned’?
+gmake[1]: *** [CMakeFiles/cmTC_4a380.dir/build.make:78: CMakeFiles/cmTC_4a380.dir/test_mpi.cpp.o] Error 1
+gmake[1]: Leaving directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_4a380/fast] Error 2
+
+
+
+The MPI test test_mpi for C in mode normal failed to compile with the following output:
+Change Dir: /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_2d8ee/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_2d8ee.dir/build.make CMakeFiles/cmTC_2d8ee.dir/build
+gmake[1]: Entering directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_2d8ee.dir/test_mpi.c.o
+/usr/bin/cc  -isystem /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/include -assume-aligned  -o CMakeFiles/cmTC_2d8ee.dir/test_mpi.c.o -c /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/cmake-3.23.1-kp2hwkap5osa4dxmgqxtwhwlxo64siif/share/cmake-3.23/Modules/FindMPI/test_mpi.c
+cc: error: unrecognized command line option ‘-assume-aligned’; did you mean ‘-Wif-not-aligned’?
+gmake[1]: *** [CMakeFiles/cmTC_2d8ee.dir/build.make:78: CMakeFiles/cmTC_2d8ee.dir/test_mpi.c.o] Error 1
+gmake[1]: Leaving directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_2d8ee/fast] Error 2
+
+
+
+The MPI test test_mpi for CXX in mode normal failed to compile with the following output:
+Change Dir: /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_b354f/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_b354f.dir/build.make CMakeFiles/cmTC_b354f.dir/build
+gmake[1]: Entering directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_b354f.dir/test_mpi.cpp.o
+/usr/bin/c++  -isystem /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/include -assume-aligned  -std=gnu++17 -o CMakeFiles/cmTC_b354f.dir/test_mpi.cpp.o -c /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/FindMPI/test_mpi.cpp
+c++: error: unrecognized command line option ‘-assume-aligned’; did you mean ‘-Wif-not-aligned’?
+gmake[1]: *** [CMakeFiles/cmTC_b354f.dir/build.make:78: CMakeFiles/cmTC_b354f.dir/test_mpi.cpp.o] Error 1
+gmake[1]: Leaving directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_b354f/fast] Error 2
+
+
+
+The MPI test test_mpi for C in mode normal failed to compile with the following output:
+Change Dir: /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_b7057/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_b7057.dir/build.make CMakeFiles/cmTC_b7057.dir/build
+gmake[1]: Entering directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_b7057.dir/test_mpi.c.o
+/usr/bin/cc  -isystem /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/include -assume-aligned  -o CMakeFiles/cmTC_b7057.dir/test_mpi.c.o -c /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/cmake-3.23.1-kp2hwkap5osa4dxmgqxtwhwlxo64siif/share/cmake-3.23/Modules/FindMPI/test_mpi.c
+cc: error: unrecognized command line option ‘-assume-aligned’; did you mean ‘-Wif-not-aligned’?
+gmake[1]: *** [CMakeFiles/cmTC_b7057.dir/build.make:78: CMakeFiles/cmTC_b7057.dir/test_mpi.c.o] Error 1
+gmake[1]: Leaving directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_b7057/fast] Error 2
+
+
+
+The MPI test test_mpi for CXX in mode normal failed to compile with the following output:
+Change Dir: /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_f586c/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_f586c.dir/build.make CMakeFiles/cmTC_f586c.dir/build
+gmake[1]: Entering directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_f586c.dir/test_mpi.cpp.o
+/usr/bin/c++  -isystem /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/include -assume-aligned  -std=gnu++17 -o CMakeFiles/cmTC_f586c.dir/test_mpi.cpp.o -c /home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/FindMPI/test_mpi.cpp
+c++: error: unrecognized command line option ‘-assume-aligned’; did you mean ‘-Wif-not-aligned’?
+gmake[1]: *** [CMakeFiles/cmTC_f586c.dir/build.make:78: CMakeFiles/cmTC_f586c.dir/test_mpi.cpp.o] Error 1
+gmake[1]: Leaving directory '/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/CMakeTmp'
+gmake: *** [Makefile:127: cmTC_f586c/fast] Error 2
+
+
+

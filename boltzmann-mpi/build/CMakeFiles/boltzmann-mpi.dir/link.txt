@@ -1,0 +1,1 @@
+/usr/bin/cc "CMakeFiles/boltzmann-mpi.dir/d2q9-bgk.c.o" -o boltzmann-mpi  /apps/SPACK/0.18.0/opt/linux-almalinux8-zen/gcc-8.5.0/intel-oneapi-mpi-2021.7.0-elp6k5qsx4csjuczbheljbaeaasdvch7/mpi/2021.7.0/lib/release/libmpi.so /usr/lib64/librt.so /usr/lib64/libpthread.so /usr/lib64/libdl.so -lm 
