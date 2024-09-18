@@ -62,6 +62,8 @@
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
 
+// #define DEBUG
+
 /* struct to hold the parameter values */
 typedef struct
 {
@@ -85,6 +87,7 @@ typedef struct
   float speeds[NSPEEDS];
 } t_speed;
 
+MPI_Datatype MPI_T_SPEED;
 /*
 ** function prototypes
 */
@@ -92,7 +95,7 @@ typedef struct
 /* load params, allocate memory, load obstacles & initialise fluid particle densities */
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr);
+               int** obstacles_ptr, float** av_vels_ptr, int** obstacles_all_ptr);
 
 /*
 ** The main calculation methods.
@@ -124,6 +127,61 @@ float calc_reynolds(const t_param params, t_speed* cells, int* obstacles);
 void die(const char* message, const int line, const char* file);
 void usage(const char* exe);
 
+static void exchange_ghost_cells(const t_param* params, t_speed* cells);
+void collectResult(const t_param params, t_speed* cells, float* av_vels, int* obstacles_all);
+void scatter_obstacle(const t_param* params, int *obstacles_all, int *obstacles_local);
+void gather_cell(const t_param* params, t_speed* cells, t_speed* cells_all);
+void gather_vels(const t_param* params, float* av_vels, float* av_vels_all);
+
+
+static void print(t_param* params, t_speed* cell)
+{
+    int nx = params->nx;
+
+    for (int i = 0; i < params->size; i++) {
+        if (i == params->rank) {
+            printf("### RANK %d "
+                   "#######################################################\n",
+                params->rank);
+            for (int j = 0; j < params->nyLocal + 2; j++) {
+                printf("%02d:", j);
+                for (int i = 0; i < nx; i++) {
+                    // for(int k =0; k<NSPEEDS; k++)
+                      printf("%12.6f ", cell[j * nx + i].speeds[2]);
+                  
+                }
+                printf("\n");
+            }
+            fflush(stdout);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+}
+
+static void print_ob(t_param* params, int* cell)
+{
+    int nx = params->nx;
+
+    for (int i = 0; i < params->size; i++) {
+        if (i == params->rank) {
+            printf("### RANK %d "
+                   "#######################################################\n",
+                params->rank);
+            for (int j = 0; j < params->nyLocal + 2; j++) {
+                printf("%02d:", j);
+                for (int i = 0; i < nx; i++) {
+                    // for(int k =0; k<NSPEEDS; k++)
+                      printf("%d ", cell[j * nx + i]);
+                  
+                }
+                printf("\n");
+            }
+            fflush(stdout);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+}
+
 /*
 ** main program:
 ** initialise, timestep loop, finalise
@@ -135,11 +193,14 @@ int main(int argc, char* argv[])
   t_param  params;              /* struct to hold parameter values */
   t_speed* cells     = NULL;    /* grid containing fluid densities */
   t_speed* tmp_cells = NULL;    /* scratch space */
+  t_speed* swap = NULL;
   int*     obstacles = NULL;    /* grid indicating which cells are blocked */
+  int*     obstacles_all = NULL;
   float* av_vels   = NULL;     /* a record of the av. velocity computed for each timestep */
   struct timeval timstr;                                                             /* structure to hold elapsed time */
   double tot_tic, tot_toc, init_tic, init_toc, comp_tic, comp_toc, col_tic, col_toc; /* floating point numbers to calculate elapsed wallclock time */
 
+  
   /* parse the command line */
   if (argc != 3)
   {
@@ -153,61 +214,111 @@ int main(int argc, char* argv[])
   
   //MPI initialize
   MPI_Init(&argc, &argv);
+  double start_all = MPI_Wtime();
 
   /* Total/init time starts here: initialise our data structures and load values from file */
-  gettimeofday(&timstr, NULL);
+  gettimeofday(&timstr, NULL); 
   tot_tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   init_tic=tot_tic;
-  initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels);
-  
+
+
+  initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels, &obstacles_all);
 
   /* Init time stops here, compute time starts*/
   gettimeofday(&timstr, NULL);
   init_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   comp_tic=init_toc;
 
+  double start = MPI_Wtime();
+
+
   for (int tt = 0; tt < params.maxIters; tt++)
   {
-    timestep(params, cells, tmp_cells, obstacles);
-    av_vels[tt] = av_velocity(params, cells, obstacles);
+
+    // timestep(params, cells, tmp_cells, obstacles);
+  accelerate_flow(params, cells, obstacles);
+  propagate(params, cells, tmp_cells);
+  rebound(params, cells, tmp_cells, obstacles);
+  collision(params, cells, tmp_cells, obstacles);
+
+  av_vels[tt] = av_velocity(params, cells, obstacles);
+
+
+
+  // if (tt == 1) {
+  //   print(&params, tmp_cells);
+
+  //   exit(0);
+  //   }
+
+  //     swap = tmp_cells;
+  // tmp_cells = cells;
+  // cells = swap;
+
+    // if(tt==0){
+    //   print(&params, cells);
+    //   printf("------------------------\n");
+    // }
+
+
+    exchange_ghost_cells(&params, cells);
+
+
+    // if(tt==0)print(&params, cells);
+    // exit(0);
+
+  // print(&params, cells);
+
+    // if(tt==0)print(&params, cells);
+
 #ifdef DEBUG
+    printf("rank: %d\n", params.rank);
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
     printf("tot density: %.12E\n", total_density(params, cells));
 #endif
+
+
+
+  } 
+ double stop = MPI_Wtime();
+
+ if (params.rank == 0)
+  {
+    printf("Runtime loop: %f s\n", stop-start);
   }
+
   
   /* Compute time stops here, collate time starts*/
   gettimeofday(&timstr, NULL);
   comp_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   col_tic=comp_toc;
 
-  // Collate data from ranks here 
 
   /* Total/collate time stops here.*/
   gettimeofday(&timstr, NULL);
   col_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   tot_toc = col_toc;
 
-  
-  if(params->rank == 0){
-  /* write final values and free memory */
-  printf("==done==\n");
-  printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
-  printf("Elapsed Init time:\t\t\t%.6lf (s)\n",    init_toc - init_tic);
-  printf("Elapsed Compute time:\t\t\t%.6lf (s)\n", comp_toc - comp_tic);
-  printf("Elapsed Collate time:\t\t\t%.6lf (s)\n", col_toc  - col_tic);
-  printf("Elapsed Total time:\t\t\t%.6lf (s)\n",   tot_toc  - tot_tic);
 
-  
+  // Collate data from ranks here 
+  collectResult(params, cells, av_vels, obstacles_all);
 
-  // write_values(params, cells, obstacles, av_vels);
-  }
   finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels);
+
+  double stop_all = MPI_Wtime();
+  if (params.rank == 0)
+  {
+    printf("==done==\n");
+    printf("Runtime all: %f s\n", stop_all-start_all);
+    
+  }
 
   MPI_Finalize();
   return EXIT_SUCCESS;
 }
+
+
 
 int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles)
 {
@@ -221,14 +332,13 @@ int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obst
 int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
 {
   // only works for last rank
-  if(params->rank == params->size -1){
+  if(params.rank == params.size -1){
   /* compute weighting factors */
   float w1 = params.density * params.accel / 9.f;
   float w2 = params.density * params.accel / 36.f;
 
   /* modify the last 2nd row of the grid */
-  // 3 is plus the halo row
-  int jj = params.ny - 3;
+  int jj = params.nyLocal - 1;
 
   for (int ii = 0; ii < params.nx; ii++)
   {
@@ -257,15 +367,15 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
 int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
 {
   /* loop over _all_ cells */
-  for (int jj = 1; jj < params.nyLocal+1; jj++)
+  for (int jj = 0; jj < params.nyLocal+2; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
       /* determine indices of axis-direction neighbours
       ** respecting periodic boundary conditions (wrap around) */
-      int y_n = (jj + 1) % params.ny;
+      int y_n = (jj + 1) % (params.nyLocal+2);
       int x_e = (ii + 1) % params.nx;
-      int y_s = (jj == 0) ? (jj + params.ny - 1) : (jj - 1);
+      int y_s = (jj == 0) ? (jj + params.nyLocal + 2 - 1) : (jj - 1);
       int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
       /* propagate densities from neighbouring cells, following
       ** appropriate directions of travel and writing into
@@ -279,6 +389,8 @@ int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
       tmp_cells[ii + jj*params.nx].speeds[6] = cells[x_e + y_s*params.nx].speeds[6]; /* north-west */
       tmp_cells[ii + jj*params.nx].speeds[7] = cells[x_e + y_n*params.nx].speeds[7]; /* south-west */
       tmp_cells[ii + jj*params.nx].speeds[8] = cells[x_w + y_n*params.nx].speeds[8]; /* south-east */
+
+
     }
   }
 
@@ -288,7 +400,7 @@ int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
 int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles)
 {
   /* loop over the cells in the grid */
-  for (int jj = 1; jj < params.nyLocal+1; jj++)
+  for (int jj = 0; jj < params.nyLocal+2; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -323,7 +435,9 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
   ** NB the collision step is called after
   ** the propagate step and so values of interest
   ** are in the scratch-space grid */
-  for (int jj = 1; jj < params.nyLocal+1; jj++)
+  // printf("rank: %d\n", params.rank);
+  float test = 0;
+  for (int jj = 0; jj < params.nyLocal+2; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -337,6 +451,9 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
         {
           local_density += tmp_cells[ii + jj*params.nx].speeds[kk];
         }
+        test = local_density;
+
+
 
         /* compute x velocity component */
         float u_x = (tmp_cells[ii + jj*params.nx].speeds[1]
@@ -357,6 +474,8 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
 
         /* velocity squared */
         float u_sq = u_x * u_x + u_y * u_y;
+
+                // if(params.rank == 2) printf("%f, i=%d, j=%d\n", u_sq, ii, jj);
 
         /* directional velocity components */
         float u[NSPEEDS];
@@ -409,8 +528,14 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
                                                   * (d_equ[kk] - tmp_cells[ii + jj*params.nx].speeds[kk]);
         }
       }
+      // printf("%f ", test);
+    test = 0;
     }
+    // printf("\n");
+
   }
+      // printf("\n");
+    // printf("\n");
 
   return EXIT_SUCCESS;
 }
@@ -423,8 +548,9 @@ float av_velocity(const t_param params, t_speed* cells, int* obstacles)
   /* initialise */
   tot_u = 0.f;
 
+
   /* loop over all non-blocked cells */
-  for (int jj = 0; jj < params.ny; jj++)
+  for (int jj = 1; jj < params.nyLocal+1; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -459,8 +585,10 @@ float av_velocity(const t_param params, t_speed* cells, int* obstacles)
         tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
         /* increase counter of inspected cells */
         ++tot_cells;
+
       }
     }
+
   }
 
   return tot_u / (float)tot_cells;
@@ -474,7 +602,7 @@ static int sizeOfRank(int rank, int size, int N)
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr)
+               int** obstacles_ptr, float** av_vels_ptr, int** obstacles_all_ptr)
 {
   char   message[1024];  /* message buffer */
   FILE*   fp;            /* file pointer */
@@ -544,6 +672,11 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   MPI_Comm_rank(MPI_COMM_WORLD, &(params->rank));
   MPI_Comm_size(MPI_COMM_WORLD, &(params->size));
+
+  MPI_Type_contiguous(9, MPI_FLOAT, &MPI_T_SPEED);
+  MPI_Type_commit(&MPI_T_SPEED);
+
+
   params->nyLocal = sizeOfRank(params->rank, params->size, params->ny);
 
   // printf("rank: %d, nyLocal: %d \n", params->rank, params->nyLocal);
@@ -563,7 +696,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   float w1 = params->density      / 9.f;
   float w2 = params->density      / 36.f;
 
-  for (int jj = 1; jj < params->nyLocal+1; jj++)
+  for (int jj = 0; jj < params->nyLocal+2; jj++)
   {
     for (int ii = 0; ii < params->nx; ii++)
     {
@@ -581,77 +714,81 @@ int initialise(const char* paramfile, const char* obstaclefile,
       (*cells_ptr)[ii + jj*params->nx].speeds[8] = w2;
     }
   }
+
+// for (int jj = 0; jj < params->nyLocal + 2; jj++) {
+
+//     for (int ii = 0; ii < params->nx; ii++) {
+//         for (int k = 0; k < 9; k++) {
+
+//           // if(jj == 0)  (*cells_ptr)[ii].speeds[k] = (float)(k*100);
+//           // else if(jj == params->nyLocal + 1 )  (*cells_ptr)[jj * params->nx + ii].speeds[k] = (float)(k*100);
+//             // 使用 ii, jj, k 的组合来初始化，确保每个网格点不同
+//           // else 
+//           (*cells_ptr)[jj * params->nx + ii].speeds[k] = (float)(ii + jj*params->nx + k*100+params->rank*1000+k);
+//         }
+
+//     }
+// }
   
+
+
   /* the map of obstacles */
   *obstacles_ptr = malloc(sizeof(int) * ((params->nyLocal+2) * params->nx));
 
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
-  int* obstacles_all_ptr = malloc(sizeof(int) * (params->ny * params->nx));
 
-  if (obstacles_all_ptr == NULL) die("cannot allocate column memory for obstacles(all)", __LINE__, __FILE__);
+  if(params->rank == 0){
 
-  /* first set all cells in obstacle(all) array to zero */
-  for (int jj = 0; jj < params->ny; jj++)
-  {
-    for (int ii = 0; ii < params->nx; ii++)
+    *obstacles_all_ptr = malloc(sizeof(int) * (params->ny * params->nx));
+
+    if (*obstacles_all_ptr == NULL) die("cannot allocate column memory for obstacles(all)", __LINE__, __FILE__);
+
+    /* first set all cells in obstacle(all) array to zero */
+    for (int jj = 0; jj < params->ny; jj++)
     {
-      obstacles_all_ptr[ii + jj*params->nx] = 0;
+      for (int ii = 0; ii < params->nx; ii++)
+      {
+        (*obstacles_all_ptr)[ii + jj*params->nx] = 0;
+      }
+   }
+
+    /* open the obstacle data file */
+    fp = fopen(obstaclefile, "r");
+
+    if (fp == NULL)
+    {
+      sprintf(message, "could not open input obstacles file: %s", obstaclefile);
+      die(message, __LINE__, __FILE__);
     }
-  }
 
-  /* open the obstacle data file */
-  fp = fopen(obstaclefile, "r");
-
-  if (fp == NULL)
-  {
-    sprintf(message, "could not open input obstacles file: %s", obstaclefile);
-    die(message, __LINE__, __FILE__);
-  }
-
-  /* read-in the blocked cells list */
-  while ((retval = fscanf(fp, "%d %d %d\n", &xx, &yy, &blocked)) != EOF)
-  {
+    /* read-in the blocked cells list */
+    while ((retval = fscanf(fp, "%d %d %d\n", &xx, &yy, &blocked)) != EOF)
+    {
     /* some checks */
-    if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
+      if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
 
-    if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
+      if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
 
-    if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
+      if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
 
-    if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
+      if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
-    /* assign to array */
-    obstacles_all_ptr[xx + yy*params->nx] = blocked;
-  }
-
-  /* and close the file */
-  fclose(fp);
-  
-  int start = 0, end = 0, sum = 0;
-  // asign obstacles to each rank
-  for(int i = 0; i <= params->rank; i++){
-    sum += sizeOfRank(i, params->size, params->ny); 
-  }
-
-  start = sum - params->nyLocal;
-  end = sum - 1;
-
-  // not finish yet
-  for (int jj = 1; jj < params->nyLocal + 1; jj++) {
-    for (int ii = 0; ii < params->nx; ii++) {
-        (*obstacles_ptr)[ii + jj * params->nx] = 1;
+      /* assign to array */
+      (*obstacles_all_ptr)[xx + yy*params->nx] = blocked;
     }
+
+    /* and close the file */
+    fclose(fp);
   }
+      
+  scatter_obstacle(params,*obstacles_all_ptr,*obstacles_ptr);
 
   /*
   ** allocate space to hold a record of the avarage velocities computed
   ** at each timestep
   */
   *av_vels_ptr = (float*)malloc(sizeof(float) * params->maxIters);
-
-  free(obstacles_all_ptr);
-  obstacles_all_ptr = NULL;
 
   return EXIT_SUCCESS;
 }
@@ -674,6 +811,9 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
   free(*av_vels_ptr);
   *av_vels_ptr = NULL;
 
+  // Clean up the custom MPI datatype
+  MPI_Type_free(&MPI_T_SPEED);
+
   return EXIT_SUCCESS;
 }
 
@@ -689,7 +829,7 @@ float total_density(const t_param params, t_speed* cells)
 {
   float total = 0.f;  /* accumulator */
 
-  for (int jj = 0; jj < params.ny; jj++)
+  for (int jj = 1; jj < params.nyLocal+1; jj++)
   {
     for (int ii = 0; ii < params.nx; ii++)
     {
@@ -798,4 +938,215 @@ void usage(const char* exe)
 {
   fprintf(stderr, "Usage: %s <paramfile> <obstaclefile>\n", exe);
   exit(EXIT_FAILURE);
+}
+
+
+void gather_vels(const t_param* params, float* av_vels, float* av_vels_all){
+
+    int iters = params->maxIters; 
+  int size = params->size;
+  
+  // printf("rank: %d\n", params->rank);
+  // for (int i = 0; i < iters; i++) {
+  //     printf("av_vels[%d] = %f ", i, av_vels[i]);
+  // }
+
+  MPI_Reduce(av_vels, av_vels_all, params->maxIters, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  if (params->rank == 0) {
+        // Calculate the global average velocity from the summed values
+        // Note: You need to adjust this according to your actual data and how you interpret 'av_vels'
+        for (int i = 0; i < iters; i++) {
+            // Example: Normalize or compute average, depending on how av_vels is defined
+            av_vels_all[i] /= size;  // Simple averaging example
+        }
+
+        // printf("Global average velocities:\n");
+        // for (int i = 0; i < iters; i++) {
+        //     printf("av_vels[%d] = %f\n", i, av_vels_all[i]);
+        // }
+    }
+}
+
+void gather_cell(const t_param* params, t_speed* cells, t_speed* cells_all)
+{
+  int rank = params->rank;
+  int size = params->size;
+  int nx = params->nx;
+
+  int *rcvCounts = NULL;  
+  int *displs = NULL; 
+
+  if(rank == 0){
+    rcvCounts = (int*) malloc(size * sizeof(int));
+    displs = (int*) malloc(size * sizeof(int));
+  }
+  int local_count = nx * params->nyLocal;  // Number of elements per process
+  MPI_Gather(&local_count, 1, MPI_INT, rcvCounts, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+
+
+    if (rank == 0) {
+      displs[0]=0;
+      // Rank 0 copies its own data
+      memcpy(cells_all, cells + nx, local_count * sizeof(t_speed));
+      // Rank 0 receives data from other processes
+      for (int i = 1; i < size; i++) {
+        displs[i] = displs[i - 1] + rcvCounts[i - 1];
+
+        MPI_Recv(cells_all + displs[i], rcvCounts[i], MPI_T_SPEED, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      }
+    } else {
+        // Other processes send data to rank 0
+        MPI_Send(cells + nx, local_count, MPI_T_SPEED, 0, 0, MPI_COMM_WORLD);
+    }   
+
+    // Debugging output
+    // print(&params, cells);
+    // printf("rank %d, gather done\n", rank);
+    // if(rank == 0){
+    //    for (int j = 0; j < params->ny; j++) {
+    //     for (int i = 0; i < nx; i++) {
+    //       printf("%5.2f ", cells_all[j * nx + i].speeds[2]);
+    //     }
+    //     printf("\n");
+    //    }
+    // }
+
+    // exit(0);
+    
+}
+
+
+
+void collectResult(const t_param params, t_speed* cells, float* av_vels, int* obstacles_all){
+
+  t_speed* cells_all = NULL;
+  float* av_vels_all = NULL;
+
+  int rank = params.rank;
+
+  if(rank == 0){
+  /* write final values and free memory */
+    // printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
+    // printf("Elapsed Init time:\t\t\t%.6lf (s)\n",    init_toc - init_tic);
+    // printf("Elapsed Compute time:\t\t\t%.6lf (s)\n", comp_toc - comp_tic);
+    // printf("Elapsed Collate time:\t\t\t%.6lf (s)\n", col_toc  - col_tic);
+    // printf("Elapsed Total time:\t\t\t%.6lf (s)\n",   tot_toc  - tot_tic);
+
+    cells_all = (t_speed*)malloc(sizeof(t_speed) * params.ny * params.nx);
+    if (cells_all == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
+
+    av_vels_all = (float*)malloc(params.maxIters * sizeof(float));
+    if (av_vels_all == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
+  }
+
+
+  gather_cell(&params, cells, cells_all);
+
+  gather_vels(&params, av_vels, av_vels_all);
+
+  if(rank == 0){
+
+    write_values(params, cells_all, obstacles_all, av_vels_all);
+
+    free(cells_all);
+    cells_all = NULL;
+
+    free(av_vels_all);
+    av_vels_all = NULL;
+
+    free(obstacles_all);
+    obstacles_all = NULL;
+  }
+
+
+}
+
+
+void scatter_obstacle(const t_param* params, int *obstacles_all, int *obstacles_local) {
+  
+    int *rcvCounts = NULL;  // Array to store the number of elements each process will receive
+    int *displs = NULL;  // Array to store the displacement for each process
+    int size = params->size;
+    int rank = params->rank;
+
+    // Allocate memory for receive counts and displacements on rank 0
+    if (rank == 0) {
+        rcvCounts = (int*) malloc(size * sizeof(int));
+        displs = (int*) malloc(size * sizeof(int));
+    }
+
+    // Gather the number of elements each process will receive (nyLocal * nx)
+    int local_data_count = params->nyLocal * params->nx;  // Number of actual data elements for each process
+
+
+
+    // Gather the receive counts on rank 0
+    MPI_Gather(&local_data_count, 1, MPI_INT, rcvCounts, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // Rank 0 computes displacements
+    if (rank == 0) {
+        displs[0] = 0;
+        for (int i = 1; i < size; i++) {
+            displs[i] = displs[i - 1] + rcvCounts[i - 1];
+        }
+    }
+
+    // Use MPI_Scatterv to send the relevant portions of cells_all to each process
+    // The data is placed starting at the second row in cells_local (leaving first and last rows empty)
+    MPI_Scatterv(obstacles_all, rcvCounts, displs, MPI_INT, 
+                 &obstacles_local[params->nx], local_data_count, MPI_INT,  // Skip the first row for ghost cells
+                 0, MPI_COMM_WORLD);
+
+    // printf("Rank %d received data (with ghost cells):\n", rank);
+    // for (int j = 1; j < params->nyLocal + 1; j++) {  // +2 includes the ghost cells
+    //     for (int i = 0; i < params->nx; i++) {
+    //         printf("%d ", obstacles_local[j * params->nx + i]);
+    //     }
+    //     printf("\n");
+    // }
+    // exit(0);
+
+    // Clean up rank 0 resources
+    if (rank == 0) {
+        free(rcvCounts);
+        free(displs);
+    }
+}
+
+void exchange_ghost_cells(const t_param* params, t_speed* cells) {
+    int rank = params->rank;
+    int size = params->size;
+    int nx = params->nx;
+    int nyLocal = params->nyLocal;
+
+    MPI_Request requests[4] = { MPI_REQUEST_NULL,
+        MPI_REQUEST_NULL,
+        MPI_REQUEST_NULL,
+        MPI_REQUEST_NULL };
+
+
+int down = (rank == 0) ? (size - 1) : (rank - 1);  // 下方邻居
+int up = (rank + 1) % size;  // 上方邻居
+
+int send_up = nyLocal * nx;      // 发送本地的最后一行数据
+int send_down = nx;              // 发送本地的第一行数据
+int recv_down = 0;               // 接收放到下幽灵单元
+int recv_up = (nyLocal + 1) * nx; // 接收放到上幽灵单元
+
+MPI_Request request[4];
+
+// 发送到下方 (down)，接收来自上方 (up)
+MPI_Isend(cells + send_down, nx, MPI_T_SPEED, down, 0, MPI_COMM_WORLD, &request[0]);
+MPI_Irecv(cells + recv_up, nx, MPI_T_SPEED, up, 0, MPI_COMM_WORLD, &request[1]);
+
+// 发送到上方 (up)，接收来自下方 (down)
+MPI_Isend(cells + send_up, nx, MPI_T_SPEED, up, 1, MPI_COMM_WORLD, &request[2]);
+MPI_Irecv(cells + recv_down, nx, MPI_T_SPEED, down, 1, MPI_COMM_WORLD, &request[3]);
+
+// 等待所有发送和接收完成
+MPI_Waitall(4, request, MPI_STATUSES_IGNORE);
+
+
 }
