@@ -1,25 +1,41 @@
-# Makefile
+# Copyright (c) 2017-2018, NVIDIA CORPORATION. All rights reserved.
+NP ?= 1
+NVCC=nvcc
+MPICXX=mpicxx
+MPIRUN ?= mpirun
+CUDA_HOME ?= /usr/local/cuda
+GENCODE_SM30	:= -gencode arch=compute_30,code=sm_30
+GENCODE_SM35	:= -gencode arch=compute_35,code=sm_35
+GENCODE_SM37	:= -gencode arch=compute_37,code=sm_37
+GENCODE_SM50	:= -gencode arch=compute_50,code=sm_50
+GENCODE_SM52	:= -gencode arch=compute_52,code=sm_52
+GENCODE_SM60    := -gencode arch=compute_60,code=sm_60
+GENCODE_SM70    := -gencode arch=compute_70,code=sm_70
+GENCODE_SM80    := -gencode arch=compute_80,code=sm_80
+GENCODE_SM90    := -gencode arch=compute_90,code=sm_90 -gencode arch=compute_90,code=compute_90
+GENCODE_FLAGS	:= $(GENCODE_SM70) $(GENCODE_SM80) $(GENCODE_SM90)
 
-EXE=d2q9-bgk
+ifdef SKIP_CUDA_AWARENESS_CHECK
+        MPICXX_FLAGS = -DSKIP_CUDA_AWARENESS_CHECK
+endif
+NVCC_FLAGS += -lineinfo $(GENCODE_FLAGS) -std=c++14
+MPICXX_FLAGS += -DUSE_NVTX -I$(CUDA_HOME)/include -std=c++14
+LD_FLAGS = -L$(CUDA_HOME)/lib64 -lcudart -lnvToolsExt
+d2q9-bgk: Makefile d2q9-bgk.c d2q9-kernel.o
+	$(MPICXX) $(MPICXX_FLAGS) d2q9-bgk.c d2q9-kernel.o $(LD_FLAGS) -o d2q9-bgk
 
-CC=mpicc
-CFLAGS= -std=c99 -Wall -O3
-LIBS = -lm -ffast-math
+d2q9-kernel.o: Makefile d2q9-kernel.cu
+	$(NVCC) $(NVCC_FLAGS) d2q9-kernel.cu -c
 
-FINAL_STATE_FILE=./final_state.dat
-AV_VELS_FILE=./av_vels.dat
-REF_FINAL_STATE_FILE=check/128x128.final_state.dat
-REF_AV_VELS_FILE=check/128x128.av_vels.dat
-
-all: $(EXE)
-
-$(EXE): $(EXE).c
-	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
-
-check:
-	python check/check.py --ref-av-vels-file=$(REF_AV_VELS_FILE) --ref-final-state-file=$(REF_FINAL_STATE_FILE) --av-vels-file=$(AV_VELS_FILE) --final-state-file=$(FINAL_STATE_FILE)
-
-.PHONY: all check clean
-
+.PHONY.: clean
 clean:
-	rm -f $(EXE)
+	rm -f d2q9-bgk d2q9-kernel.o *.nsys-rep d2q9-bgk.*.compute-sanitizer.log
+
+sanitize: d2q9-bgk
+	$(MPIRUN) -np $(NP) compute-sanitizer --log-file d2q9-bgk.%q{OMPI_COMM_WORLD_RANK}.compute-sanitizer.log ./d2q9-bgk -niter 10
+
+run: d2q9-bgk
+	$(MPIRUN) -np $(NP) ./d2q9-bgk
+
+profile: d2q9-bgk
+	$(MPIRUN) -np $(NP) nsys profile --trace=mpi,cuda,nvtx -o d2q9-bgk.%q{OMPI_COMM_WORLD_RANK} ./d2q9-bgk -niter 10

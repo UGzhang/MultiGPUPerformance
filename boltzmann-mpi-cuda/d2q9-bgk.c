@@ -57,6 +57,43 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <mpi.h>
+#include <cuda_runtime.h>
+
+#define MPI_CALL(call)                                                                \
+    {                                                                                 \
+        int mpi_status = call;                                                        \
+        if (MPI_SUCCESS != mpi_status) {                                              \
+            char mpi_error_string[MPI_MAX_ERROR_STRING];                              \
+            int mpi_error_string_length = 0;                                          \
+            MPI_Error_string(mpi_status, mpi_error_string, &mpi_error_string_length); \
+            if (NULL != mpi_error_string)                                             \
+                fprintf(stderr,                                                       \
+                        "ERROR: MPI call \"%s\" in line %d of file %s failed "        \
+                        "with %s "                                                    \
+                        "(%d).\n",                                                    \
+                        #call, __LINE__, __FILE__, mpi_error_string, mpi_status);     \
+            else                                                                      \
+                fprintf(stderr,                                                       \
+                        "ERROR: MPI call \"%s\" in line %d of file %s failed "        \
+                        "with %d.\n",                                                 \
+                        #call, __LINE__, __FILE__, mpi_status);                       \
+            exit( mpi_status );                                                       \
+        }                                                                             \
+    }
+
+    #define CUDA_RT_CALL(call)                                                                  \
+    {                                                                                       \
+        cudaError_t cudaStatus = call;                                                      \
+        if (cudaSuccess != cudaStatus) {                                                    \
+            fprintf(stderr,                                                                 \
+                    "ERROR: CUDA RT call \"%s\" in line %d of file %s failed "              \
+                    "with "                                                                 \
+                    "%s (%d).\n",                                                           \
+                    #call, __LINE__, __FILE__, cudaGetErrorString(cudaStatus), cudaStatus); \
+            exit( cudaStatus );                                                             \
+        }                                                                                   \
+    }
+
 
 #define NSPEEDS         9
 #define FINALSTATEFILE  "final_state.dat"
@@ -96,6 +133,10 @@ MPI_Datatype MPI_T_SPEED;
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
                int** obstacles_ptr, float** av_vels_ptr, int** obstacles_all_ptr);
+int dataToDevices(t_param* params, t_speed**  cells_d, t_speed**  tmp_cells_d,
+                int**  obstacles_d, float** av_vels_d, t_speed**  cells_h, int** obstacles_h);
+
+int dataToHost(t_param* params, t_speed* cells_d, t_speed* cells_h);
 
 /*
 ** The main calculation methods.
@@ -111,7 +152,8 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
 
 /* finalise, including freeing up allocated memory */
 int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
-             int** obstacles_ptr, float** av_vels_ptr);
+             int** obstacles_ptr, float** av_vels_ptr,t_speed** cells_d, t_speed** tmp_cells_d,
+             int** obstacles_ptr_d);
 
 /* Sum all the densities in the grid.
 ** The total should remain constant from one timestep to the next. */
@@ -132,6 +174,9 @@ void collectResult(const t_param params, t_speed* cells, float* av_vels, int* ob
 void scatter_obstacle(const t_param* params, int *obstacles_all, int *obstacles_local);
 void gather_cell(const t_param* params, t_speed* cells, t_speed* cells_all);
 void gather_vels(const t_param* params, float* av_vels, float* av_vels_all);
+
+
+
 
 
 static void print(t_param* params, t_speed* cell)
@@ -182,10 +227,7 @@ static void print_ob(t_param* params, int* cell)
     }
 }
 
-/*
-** main program:
-** initialise, timestep loop, finalise
-*/
+
 int main(int argc, char* argv[])
 {
   char*    paramfile = NULL;    /* name of the input parameter file */
@@ -200,7 +242,11 @@ int main(int argc, char* argv[])
   struct timeval timstr;                                                             /* structure to hold elapsed time */
   double tot_tic, tot_toc, init_tic, init_toc, comp_tic, comp_toc, col_tic, col_toc; /* floating point numbers to calculate elapsed wallclock time */
 
-  
+  t_speed* cells_d     = NULL;    /* grid containing fluid densities */
+  t_speed* tmp_cells_d = NULL;    /* scratch space */
+  float* av_vels_d   = NULL;
+  int*     obstacles_d = NULL; 
+
   /* parse the command line */
   if (argc != 3)
   {
@@ -212,17 +258,17 @@ int main(int argc, char* argv[])
     obstaclefile = argv[2];
   }
   
-  //MPI initialize
+
   MPI_Init(&argc, &argv);
   double start_all = MPI_Wtime();
 
-  /* Total/init time starts here: initialise our data structures and load values from file */
   gettimeofday(&timstr, NULL); 
   tot_tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   init_tic=tot_tic;
 
 
   initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels, &obstacles_all);
+  dataToDevices(&params, &cells_d, &tmp_cells_d, &obstacles_d, &av_vels_d, &cells, &obstacles);
 
   /* Init time stops here, compute time starts*/
   gettimeofday(&timstr, NULL);
@@ -236,12 +282,12 @@ int main(int argc, char* argv[])
   {
 
     // timestep(params, cells, tmp_cells, obstacles);
-  accelerate_flow(params, cells, obstacles);
-  propagate(params, cells, tmp_cells);
-  rebound(params, cells, tmp_cells, obstacles);
-  collision(params, cells, tmp_cells, obstacles);
+  accelerate_flow(params, cells_d, obstacles_d);
+  propagate(params, cells_d, tmp_cells_d);
+  rebound(params, cells_d, tmp_cells_d, obstacles_d);
+  collision(params, cells_d, tmp_cells_d, obstacles_d);
 
-  av_vels[tt] = av_velocity(params, cells, obstacles);
+  // av_vels[tt] = av_velocity(params, cells, obstacles);
 
 
 
@@ -261,7 +307,7 @@ int main(int argc, char* argv[])
     // }
 
 
-    exchange_ghost_cells(&params, cells);
+    exchange_ghost_cells(&params, cells_d);
 
 
     // if(tt==0)print(&params, cells);
@@ -300,11 +346,11 @@ int main(int argc, char* argv[])
   col_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   tot_toc = col_toc;
 
-
+  dataToHost(&params, cells_d, cells);
   // Collate data from ranks here 
-  collectResult(params, cells, av_vels, obstacles_all);
+  // collectResult(params, cells, av_vels, obstacles_all);
 
-  finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels);
+  finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels, &cells_d, &tmp_cells_d,& obstacles_d );
 
   double stop_all = MPI_Wtime();
   if (params.rank == 0)
@@ -329,223 +375,14 @@ int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obst
   return EXIT_SUCCESS;
 }
 
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
-{
-  // only works for last rank
-  if(params.rank == params.size -1){
-  /* compute weighting factors */
-  float w1 = params.density * params.accel / 9.f;
-  float w2 = params.density * params.accel / 36.f;
-
-  /* modify the last 2nd row of the grid */
-  int jj = params.nyLocal - 1;
-
-  for (int ii = 0; ii < params.nx; ii++)
-  {
-    /* if the cell is not occupied and
-    ** we don't send a negative density */
-    if (!obstacles[ii + jj*params.nx]
-        && (cells[ii + jj*params.nx].speeds[3] - w1) > 0.f
-        && (cells[ii + jj*params.nx].speeds[6] - w2) > 0.f
-        && (cells[ii + jj*params.nx].speeds[7] - w2) > 0.f)
-    {
-      /* increase 'east-side' densities */
-      cells[ii + jj*params.nx].speeds[1] += w1;
-      cells[ii + jj*params.nx].speeds[5] += w2;
-      cells[ii + jj*params.nx].speeds[8] += w2;
-      /* decrease 'west-side' densities */
-      cells[ii + jj*params.nx].speeds[3] -= w1;
-      cells[ii + jj*params.nx].speeds[6] -= w2;
-      cells[ii + jj*params.nx].speeds[7] -= w2;
-    }
-  }
-  }
-
-  return EXIT_SUCCESS;
-}
-
-int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
-{
-  /* loop over _all_ cells */
-  for (int jj = 0; jj < params.nyLocal+2; jj++)
-  {
-    for (int ii = 0; ii < params.nx; ii++)
-    {
-      /* determine indices of axis-direction neighbours
-      ** respecting periodic boundary conditions (wrap around) */
-      int y_n = (jj + 1) % (params.nyLocal+2);
-      int x_e = (ii + 1) % params.nx;
-      int y_s = (jj == 0) ? (jj + params.nyLocal + 2 - 1) : (jj - 1);
-      int x_w = (ii == 0) ? (ii + params.nx - 1) : (ii - 1);
-      /* propagate densities from neighbouring cells, following
-      ** appropriate directions of travel and writing into
-      ** scratch space grid */
-      tmp_cells[ii + jj*params.nx].speeds[0] = cells[ii + jj*params.nx].speeds[0]; /* central cell, no movement */
-      tmp_cells[ii + jj*params.nx].speeds[1] = cells[x_w + jj*params.nx].speeds[1]; /* east */
-      tmp_cells[ii + jj*params.nx].speeds[2] = cells[ii + y_s*params.nx].speeds[2]; /* north */
-      tmp_cells[ii + jj*params.nx].speeds[3] = cells[x_e + jj*params.nx].speeds[3]; /* west */
-      tmp_cells[ii + jj*params.nx].speeds[4] = cells[ii + y_n*params.nx].speeds[4]; /* south */
-      tmp_cells[ii + jj*params.nx].speeds[5] = cells[x_w + y_s*params.nx].speeds[5]; /* north-east */
-      tmp_cells[ii + jj*params.nx].speeds[6] = cells[x_e + y_s*params.nx].speeds[6]; /* north-west */
-      tmp_cells[ii + jj*params.nx].speeds[7] = cells[x_e + y_n*params.nx].speeds[7]; /* south-west */
-      tmp_cells[ii + jj*params.nx].speeds[8] = cells[x_w + y_n*params.nx].speeds[8]; /* south-east */
 
 
-    }
-  }
-
-  return EXIT_SUCCESS;
-}
-
-int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles)
-{
-  /* loop over the cells in the grid */
-  for (int jj = 0; jj < params.nyLocal+2; jj++)
-  {
-    for (int ii = 0; ii < params.nx; ii++)
-    {
-      /* if the cell contains an obstacle */
-      if (obstacles[jj*params.nx + ii])
-      {
-        /* called after propagate, so taking values from scratch space
-        ** mirroring, and writing into main grid */
-        cells[ii + jj*params.nx].speeds[1] = tmp_cells[ii + jj*params.nx].speeds[3];
-        cells[ii + jj*params.nx].speeds[2] = tmp_cells[ii + jj*params.nx].speeds[4];
-        cells[ii + jj*params.nx].speeds[3] = tmp_cells[ii + jj*params.nx].speeds[1];
-        cells[ii + jj*params.nx].speeds[4] = tmp_cells[ii + jj*params.nx].speeds[2];
-        cells[ii + jj*params.nx].speeds[5] = tmp_cells[ii + jj*params.nx].speeds[7];
-        cells[ii + jj*params.nx].speeds[6] = tmp_cells[ii + jj*params.nx].speeds[8];
-        cells[ii + jj*params.nx].speeds[7] = tmp_cells[ii + jj*params.nx].speeds[5];
-        cells[ii + jj*params.nx].speeds[8] = tmp_cells[ii + jj*params.nx].speeds[6];
-      }
-    }
-  }
-
-  return EXIT_SUCCESS;
-}
-
-int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles)
-{
-  const float c_sq = 1.f / 3.f; /* square of speed of sound */
-  const float w0 = 4.f / 9.f;  /* weighting factor */
-  const float w1 = 1.f / 9.f;  /* weighting factor */
-  const float w2 = 1.f / 36.f; /* weighting factor */
-
-  /* loop over the cells in the grid
-  ** NB the collision step is called after
-  ** the propagate step and so values of interest
-  ** are in the scratch-space grid */
-  // printf("rank: %d\n", params.rank);
-  float test = 0;
-  for (int jj = 0; jj < params.nyLocal+2; jj++)
-  {
-    for (int ii = 0; ii < params.nx; ii++)
-    {
-      /* don't consider occupied cells */
-      if (!obstacles[ii + jj*params.nx])
-      {
-        /* compute local density total */
-        float local_density = 0.f;
-
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          local_density += tmp_cells[ii + jj*params.nx].speeds[kk];
-        }
-        test = local_density;
-
-
-
-        /* compute x velocity component */
-        float u_x = (tmp_cells[ii + jj*params.nx].speeds[1]
-                      + tmp_cells[ii + jj*params.nx].speeds[5]
-                      + tmp_cells[ii + jj*params.nx].speeds[8]
-                      - (tmp_cells[ii + jj*params.nx].speeds[3]
-                         + tmp_cells[ii + jj*params.nx].speeds[6]
-                         + tmp_cells[ii + jj*params.nx].speeds[7]))
-                     / local_density;
-        /* compute y velocity component */
-        float u_y = (tmp_cells[ii + jj*params.nx].speeds[2]
-                      + tmp_cells[ii + jj*params.nx].speeds[5]
-                      + tmp_cells[ii + jj*params.nx].speeds[6]
-                      - (tmp_cells[ii + jj*params.nx].speeds[4]
-                         + tmp_cells[ii + jj*params.nx].speeds[7]
-                         + tmp_cells[ii + jj*params.nx].speeds[8]))
-                     / local_density;
-
-        /* velocity squared */
-        float u_sq = u_x * u_x + u_y * u_y;
-
-                // if(params.rank == 2) printf("%f, i=%d, j=%d\n", u_sq, ii, jj);
-
-        /* directional velocity components */
-        float u[NSPEEDS];
-        u[1] =   u_x;        /* east */
-        u[2] =         u_y;  /* north */
-        u[3] = - u_x;        /* west */
-        u[4] =       - u_y;  /* south */
-        u[5] =   u_x + u_y;  /* north-east */
-        u[6] = - u_x + u_y;  /* north-west */
-        u[7] = - u_x - u_y;  /* south-west */
-        u[8] =   u_x - u_y;  /* south-east */
-
-        /* equilibrium densities */
-        float d_equ[NSPEEDS];
-        /* zero velocity density: weight w0 */
-        d_equ[0] = w0 * local_density
-                   * (1.f - u_sq / (2.f * c_sq));
-        /* axis speeds: weight w1 */
-        d_equ[1] = w1 * local_density * (1.f + u[1] / c_sq
-                                         + (u[1] * u[1]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[2] = w1 * local_density * (1.f + u[2] / c_sq
-                                         + (u[2] * u[2]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[3] = w1 * local_density * (1.f + u[3] / c_sq
-                                         + (u[3] * u[3]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[4] = w1 * local_density * (1.f + u[4] / c_sq
-                                         + (u[4] * u[4]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        /* diagonal speeds: weight w2 */
-        d_equ[5] = w2 * local_density * (1.f + u[5] / c_sq
-                                         + (u[5] * u[5]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[6] = w2 * local_density * (1.f + u[6] / c_sq
-                                         + (u[6] * u[6]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[7] = w2 * local_density * (1.f + u[7] / c_sq
-                                         + (u[7] * u[7]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[8] = w2 * local_density * (1.f + u[8] / c_sq
-                                         + (u[8] * u[8]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-
-        /* relaxation step */
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          cells[ii + jj*params.nx].speeds[kk] = tmp_cells[ii + jj*params.nx].speeds[kk]
-                                                  + params.omega
-                                                  * (d_equ[kk] - tmp_cells[ii + jj*params.nx].speeds[kk]);
-        }
-      }
-      // printf("%f ", test);
-    test = 0;
-    }
-    // printf("\n");
-
-  }
-      // printf("\n");
-    // printf("\n");
-
-  return EXIT_SUCCESS;
-}
 
 float av_velocity(const t_param params, t_speed* cells, int* obstacles)
 {
   int    tot_cells = 0;  /* no. of cells used in calculation */
   float tot_u;          /* accumulated magnitudes of velocity for each cell */
 
-  /* initialise */
   tot_u = 0.f;
 
 
@@ -604,6 +441,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
                int** obstacles_ptr, float** av_vels_ptr, int** obstacles_all_ptr)
 {
+
   char   message[1024];  /* message buffer */
   FILE*   fp;            /* file pointer */
   int    xx, yy;         /* generic array indices */
@@ -673,7 +511,12 @@ int initialise(const char* paramfile, const char* obstaclefile,
   MPI_Comm_rank(MPI_COMM_WORLD, &(params->rank));
   MPI_Comm_size(MPI_COMM_WORLD, &(params->size));
 
-  MPI_Type_contiguous(9, MPI_FLOAT, &MPI_T_SPEED);
+  int num_devices = 0;
+  CUDA_RT_CALL(cudaGetDeviceCount(&num_devices));
+  CUDA_RT_CALL(cudaSetDevice(params->rank%num_devices));
+  CUDA_RT_CALL(cudaFree(0));
+
+  MPI_Type_contiguous(NSPEEDS, MPI_FLOAT, &MPI_T_SPEED);
   MPI_Type_commit(&MPI_T_SPEED);
 
 
@@ -733,14 +576,14 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
 
   /* the map of obstacles */
-  *obstacles_ptr = malloc(sizeof(int) * ((params->nyLocal+2) * params->nx));
-
+  *obstacles_ptr = (int *)malloc(sizeof(int) * ((params->nyLocal+2) * params->nx));
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
+  memset(*obstacles_ptr, 0, sizeof(int) * ((params->nyLocal + 2) * params->nx));
 
 
   if(params->rank == 0){
 
-    *obstacles_all_ptr = malloc(sizeof(int) * (params->ny * params->nx));
+    *obstacles_all_ptr = (int*)malloc(sizeof(int) * (params->ny * params->nx));
 
     if (*obstacles_all_ptr == NULL) die("cannot allocate column memory for obstacles(all)", __LINE__, __FILE__);
 
@@ -793,8 +636,47 @@ int initialise(const char* paramfile, const char* obstaclefile,
   return EXIT_SUCCESS;
 }
 
+int dataToHost(t_param* params, t_speed* cells_d, t_speed* cells_h)
+{
+
+  cudaMemcpy(cells_h, cells_d, sizeof(t_speed) * (params->nyLocal+2) * params->nx, cudaMemcpyDeviceToHost);
+  return EXIT_SUCCESS;
+}
+
+
+int dataToDevices(t_param* params, t_speed**  cells_d, t_speed**  tmp_cells_d,
+                int**  obstacles_d, float** av_vels_d, t_speed**  cells_h, int** obstacles_h){
+
+  int size = (params->nyLocal+2) * params->nx;
+  cudaStream_t stream1, stream2;
+  cudaStreamCreate(&stream1);
+  cudaStreamCreate(&stream2);
+
+  CUDA_RT_CALL(cudaMalloc((void**)cells_d, sizeof(t_speed) * size));
+
+  CUDA_RT_CALL(cudaMalloc((void**)tmp_cells_d, sizeof(t_speed) * size));
+
+  CUDA_RT_CALL(cudaMalloc((void**)obstacles_d, sizeof(int) * size));
+
+  // cudaMalloc((void**)av_vels_d, sizeof(float) * sizeLocal);
+  //   system("nvidia-smi");
+
+  CUDA_RT_CALL(cudaMemcpyAsync(*cells_d, *cells_h, sizeof(t_speed) * size, cudaMemcpyHostToDevice, stream1));
+  CUDA_RT_CALL(cudaMemcpyAsync(*obstacles_d, *obstacles_h, sizeof(int) * size, cudaMemcpyHostToDevice, stream2));
+  CUDA_RT_CALL(cudaMemset(*tmp_cells_d, 0 ,sizeof(t_speed) * size));
+
+  cudaStreamSynchronize(stream1);
+  cudaStreamSynchronize(stream2);
+
+  cudaStreamDestroy(stream1);
+  cudaStreamDestroy(stream2);
+
+
+}
+
 int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
-             int** obstacles_ptr, float** av_vels_ptr)
+             int** obstacles_ptr, float** av_vels_ptr,t_speed** cells_d, t_speed** tmp_cells_d,
+             int** obstacles_ptr_d)
 {
   /*
   ** free up allocated memory
@@ -810,6 +692,11 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 
   free(*av_vels_ptr);
   *av_vels_ptr = NULL;
+
+  cudaFree(*cells_d);
+  cudaFree(*tmp_cells_d);
+  cudaFree(*obstacles_ptr_d);
+
 
   // Clean up the custom MPI datatype
   MPI_Type_free(&MPI_T_SPEED);
@@ -1138,12 +1025,12 @@ int recv_up = (nyLocal + 1) * nx; // 接收放到上幽灵单元
 MPI_Request request[4];
 
 // 发送到下方 (down)，接收来自上方 (up)
-MPI_Isend(cells + send_down, nx, MPI_T_SPEED, down, 0, MPI_COMM_WORLD, &request[0]);
-MPI_Irecv(cells + recv_up, nx, MPI_T_SPEED, up, 0, MPI_COMM_WORLD, &request[1]);
+MPI_CALL(MPI_Isend(cells + send_down, nx, MPI_T_SPEED, down, 0, MPI_COMM_WORLD, &request[0]));
+MPI_CALL(MPI_Irecv(cells + recv_up, nx, MPI_T_SPEED, up, 0, MPI_COMM_WORLD, &request[1]));
 
 // 发送到上方 (up)，接收来自下方 (down)
-MPI_Isend(cells + send_up, nx, MPI_T_SPEED, up, 1, MPI_COMM_WORLD, &request[2]);
-MPI_Irecv(cells + recv_down, nx, MPI_T_SPEED, down, 1, MPI_COMM_WORLD, &request[3]);
+MPI_CALL(MPI_Isend(cells + send_up, nx, MPI_T_SPEED, up, 1, MPI_COMM_WORLD, &request[2]));
+MPI_CALL(MPI_Irecv(cells + recv_down, nx, MPI_T_SPEED, down, 1, MPI_COMM_WORLD, &request[3]));
 
 // 等待所有发送和接收完成
 MPI_Waitall(4, request, MPI_STATUSES_IGNORE);
