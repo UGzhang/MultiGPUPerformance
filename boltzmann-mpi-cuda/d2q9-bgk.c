@@ -348,7 +348,7 @@ int main(int argc, char* argv[])
 
   dataToHost(&params, cells_d, cells);
   // Collate data from ranks here 
-  // collectResult(params, cells, av_vels, obstacles_all);
+  collectResult(params, cells, av_vels, obstacles_all);
 
   finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels, &cells_d, &tmp_cells_d,& obstacles_d );
 

@@ -72,8 +72,8 @@ int accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
 
 __global__ void propagate_kernel(t_speed* cells, t_speed* tmp_cells, int nyLocal, int nx )
 {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x + 1;
-    int jdx = blockIdx.y * blockDim.y + threadIdx.y;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int jdx = blockIdx.y * blockDim.y + threadIdx.y+1;
 
     int gridStrideX = gridDim.x * blockDim.x;
     int gridStrideY = gridDim.y * blockDim.y;
@@ -122,8 +122,8 @@ int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
 __global__ void rebound_kernel(t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx )
 {
   
-    int idx = blockIdx.x * blockDim.x + threadIdx.x + 1;
-    int jdx = blockIdx.y * blockDim.y + threadIdx.y;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int jdx = blockIdx.y * blockDim.y + threadIdx.y+ 1;
 
     int gridStrideX = gridDim.x * blockDim.x;
     int gridStrideY = gridDim.y * blockDim.y;
@@ -179,8 +179,8 @@ __global__ void collision_kernel(t_speed* cells, t_speed* tmp_cells, int* obstac
   ** the propagate step and so values of interest
   ** are in the scratch-space grid */
 
-  int idx = blockIdx.x * blockDim.x + threadIdx.x + 1;
-  int jdx = blockIdx.y * blockDim.y + threadIdx.y;
+  int idx = blockIdx.x * blockDim.x + threadIdx.x ;
+  int jdx = blockIdx.y * blockDim.y + threadIdx.y + 1;
 
   int gridStrideX = gridDim.x * blockDim.x;
   int gridStrideY = gridDim.y * blockDim.y;
