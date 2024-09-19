@@ -281,11 +281,11 @@ int main(int argc, char* argv[])
   {
 
     // timestep(params, cells, tmp_cells, obstacles);
-  accelerate_flow(params, cells_d, obstacles_d);
+  // accelerate_flow(params, cells_d, obstacles_d);
   // propagate(params, cells_d, tmp_cells_d);
   // rebound(params, cells_d, tmp_cells_d, obstacles_d);
   // collision(params, cells_d, tmp_cells_d, obstacles_d);
-  rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
+  timestep(params, cells_d, tmp_cells_d, obstacles_d);
 
   // av_vels[tt] = av_velocity(params, cells, obstacles);
 
@@ -341,7 +341,6 @@ int main(int argc, char* argv[])
   collectResult(params, cells, av_vels, obstacles_all);
 
 
-
   finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels, &cells_d, &tmp_cells_d,& obstacles_d );
 
   double stop_all = MPI_Wtime();
@@ -357,18 +356,6 @@ int main(int argc, char* argv[])
   MPI_Finalize();
   return EXIT_SUCCESS;
 }
-
-
-
-int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles)
-{
-  accelerate_flow(params, cells, obstacles);
-  propagate(params, cells, tmp_cells);
-  rebound(params, cells, tmp_cells, obstacles);
-  collision(params, cells, tmp_cells, obstacles);
-  return EXIT_SUCCESS;
-}
-
 
 
 

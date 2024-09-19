@@ -295,7 +295,8 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
 }
 
 
-__global__ void rebound_collision_kernel(t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx, float omega)
+__global__ void rebound_collision_kernel
+(t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx, float omega, bool rankIsLast, float w1_flow, float w2_flow)
 {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
   const float w0 = 4.f / 9.f;  /* weighting factor */
@@ -320,6 +321,27 @@ __global__ void rebound_collision_kernel(t_speed* cells, t_speed* tmp_cells, int
     for(int ii = idx; ii < nx; ii += gridStrideX)
     {
       int index = ii + jj * nx;
+      if(rankIsLast && jdx == nyLocal -1)
+      {
+             if (!obstacles[index] &&
+                (cells[index].speeds[3] - w1_flow) > 0.f &&
+                (cells[index].speeds[6] - w2_flow) > 0.f &&
+                (cells[index].speeds[7] - w2_flow) > 0.f) {
+
+               /* increase 'east-side' densities */
+                cells[index].speeds[1] += w1_flow;
+                cells[index].speeds[5] += w2_flow;
+                cells[index].speeds[8] += w2_flow;
+
+                /* decrease 'west-side' densities */
+                cells[index].speeds[3] -= w1_flow;
+                cells[index].speeds[6] -= w2_flow;
+                cells[index].speeds[7] -= w2_flow;
+            }   
+
+      }
+      
+
 
       int y_n = (jj + 1) % (nyLocal+2);
       int x_e = (ii + 1) % nx;
@@ -441,12 +463,16 @@ __global__ void rebound_collision_kernel(t_speed* cells, t_speed* tmp_cells, int
 }
 
 
-int rebound_collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles){
+int timestep(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles){
 
     dim3 threadsPerBlock(16, 16); 
     dim3 blocksPerGrid(16, 16);
+    bool rankIsLast = (params.rank == params.size -1);
+        float w1_flow = params.density * params.accel / 9.f;
+    float w2_flow = params.density * params.accel / 36.f; 
 
-    rebound_collision_kernel<<<blocksPerGrid, threadsPerBlock>>>(cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega);
+    rebound_collision_kernel<<<blocksPerGrid, threadsPerBlock>>>
+              (cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega,rankIsLast,w1_flow,w2_flow);
     cudaDeviceSynchronize();
 
   return EXIT_SUCCESS;
