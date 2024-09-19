@@ -175,8 +175,7 @@ void scatter_obstacle(const t_param* params, int *obstacles_all, int *obstacles_
 void gather_cell(const t_param* params, t_speed* cells, t_speed* cells_all);
 void gather_vels(const t_param* params, float* av_vels, float* av_vels_all);
 
-
-
+int rebound_collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles);
 
 
 static void print(t_param* params, t_speed* cell)
@@ -283,28 +282,19 @@ int main(int argc, char* argv[])
 
     // timestep(params, cells, tmp_cells, obstacles);
   accelerate_flow(params, cells_d, obstacles_d);
-  propagate(params, cells_d, tmp_cells_d);
-  rebound(params, cells_d, tmp_cells_d, obstacles_d);
-  collision(params, cells_d, tmp_cells_d, obstacles_d);
+  // propagate(params, cells_d, tmp_cells_d);
+  // rebound(params, cells_d, tmp_cells_d, obstacles_d);
+  // collision(params, cells_d, tmp_cells_d, obstacles_d);
+  rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
 
   // av_vels[tt] = av_velocity(params, cells, obstacles);
 
 
+  swap = tmp_cells_d;
+  tmp_cells_d = cells_d;
+  cells_d = swap;
 
-  // if (tt == 1) {
-  //   print(&params, tmp_cells);
 
-  //   exit(0);
-  //   }
-
-  //     swap = tmp_cells;
-  // tmp_cells = cells;
-  // cells = swap;
-
-    // if(tt==0){
-    //   print(&params, cells);
-    //   printf("------------------------\n");
-    // }
 
 
     exchange_ghost_cells(&params, cells_d);
@@ -350,6 +340,8 @@ int main(int argc, char* argv[])
   // Collate data from ranks here 
   collectResult(params, cells, av_vels, obstacles_all);
 
+
+
   finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels, &cells_d, &tmp_cells_d,& obstacles_d );
 
   double stop_all = MPI_Wtime();
@@ -359,6 +351,8 @@ int main(int argc, char* argv[])
     printf("Runtime all: %f s\n", stop_all-start_all);
     
   }
+
+// ss
 
   MPI_Finalize();
   return EXIT_SUCCESS;
@@ -1007,11 +1001,6 @@ void exchange_ghost_cells(const t_param* params, t_speed* cells) {
     int size = params->size;
     int nx = params->nx;
     int nyLocal = params->nyLocal;
-
-    MPI_Request requests[4] = { MPI_REQUEST_NULL,
-        MPI_REQUEST_NULL,
-        MPI_REQUEST_NULL,
-        MPI_REQUEST_NULL };
 
 
 int down = (rank == 0) ? (size - 1) : (rank - 1);  // 下方邻居
