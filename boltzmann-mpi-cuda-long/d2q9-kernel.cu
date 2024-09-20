@@ -1,4 +1,3 @@
-
 #define NSPEEDS         9
 
 typedef struct
@@ -54,7 +53,7 @@ __global__ void accelerate_kernel(t_speed* cells, int* obstacles, int nyLocal, i
 
 }
 
-int accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
+void accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
 {
   if(params.rank == params.size - 1){
 
@@ -64,15 +63,13 @@ int accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
     float w2 = params.density * params.accel / 36.f;
     accelerate_kernel<<<blocksPerGrid, threadsPerBlock>>>(cells, obstacles, params.nyLocal, params.nx, w1, w2);
     // cudaDeviceSynchronize();
-
-    return EXIT_SUCCESS;
   }
 
 }
 
 
 
-__global__ void rebound_collision_kernel
+__global__ void propagate_rebound_collision_kernel
 (t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx, float omega, bool rankIsLast, float w1_flow, float w2_flow)
 {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
@@ -220,7 +217,7 @@ __global__ void rebound_collision_kernel
 }
 
 
-int rebound_collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles){
+void propagate_rebound_collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles){
 
     dim3 threadsPerBlock(32, 32); 
     dim3 blocksPerGrid(32, 32);
@@ -228,10 +225,9 @@ int rebound_collision(const t_param params, t_speed* cells, t_speed* tmp_cells, 
     float w1_flow = params.density * params.accel / 9.f;
     float w2_flow = params.density * params.accel / 36.f; 
 
-
-    rebound_collision_kernel<<<blocksPerGrid, threadsPerBlock>>>(cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega,rankIsLast,w1_flow,w2_flow);
+    propagate_rebound_collision_kernel<<<blocksPerGrid, threadsPerBlock>>>
+          (cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega,rankIsLast,w1_flow,w2_flow);
     cudaDeviceSynchronize();
 
-  return EXIT_SUCCESS;
 
 }
