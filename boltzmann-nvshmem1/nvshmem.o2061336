@@ -1,0 +1,79 @@
+### Starting TaskPrologue of job 2061336 on a0801 at Fri Sep 20 18:26:02 CEST 2024
+Running on cores 0-15,32-47,96-111 with governor ondemand
+Fri Sep 20 18:26:02 2024       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 560.28.03              Driver Version: 560.28.03      CUDA Version: 12.6     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-40GB          On  |   00000000:0E:00.0 Off |                    0 |
+| N/A   36C    P0             56W /  400W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA A100-SXM4-40GB          On  |   00000000:49:00.0 Off |                    0 |
+| N/A   33C    P0             54W /  400W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   2  NVIDIA A100-SXM4-40GB          On  |   00000000:CC:00.0 Off |                    0 |
+| N/A   34C    P0             56W /  400W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+### Finished TaskPrologue
+
+nvcc -DHAVE_CUB -ccbin=mpic++ -dc -Xcompiler -fopenmp -lineinfo -DUSE_NVTX -lnvToolsExt -gencode arch=compute_70,code=sm_70 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_90,code=sm_90 -gencode arch=compute_90,code=compute_90 -std=c++14 -I/usr/local/nvshmem/include -c d2q9-bgk.cu -o d2q9-bgk.o
+nvcc -gencode arch=compute_70,code=sm_70 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_90,code=sm_90 -gencode arch=compute_90,code=compute_90 d2q9-bgk.o d2q9-kernel.o -o d2q9-bgk -ccbin=mpic++ -L/usr/local/nvshmem/lib -lnvshmem -L/usr/local/cuda/lib64 -lcuda -lcudart -lnvToolsExt -lnvidia-ml
+[cli_0]: SPMIU_parse_keyvals: unexpected key delimiter at character 2 in 27    cmd=finalize-response;rc=0;
+[cli_1]: SPMIU_parse_keyvals: unexpected key delimiter at character 2 in 27    cmd=finalize-response;rc=0;
+[cli_2]: SPMIU_parse_keyvals: unexpected key delimiter at character 2 in 27    cmd=finalize-response;rc=0;
+slurmstepd: error: If munged is up, restart with --num-threads=10
+slurmstepd: error: Munge encode failed: Failed to receive message header: Bad file descriptor
+slurmstepd: error: slurm_buffers_pack_msg: auth_g_create: MESSAGE_TASK_EXIT has authentication error
+slurmstepd: error: If munged is up, restart with --num-threads=10
+slurmstepd: error: Munge encode failed: Failed to receive message header: Bad file descriptor
+slurmstepd: error: slurm_buffers_pack_msg: auth_g_create: MESSAGE_TASK_EXIT has authentication error
+slurmstepd: error: If munged is up, restart with --num-threads=10
+slurmstepd: error: Munge encode failed: Failed to receive message header: Bad file descriptor
+slurmstepd: error: slurm_buffers_pack_msg: auth_g_create: MESSAGE_TASK_EXIT has authentication error
+slurmstepd: error: If munged is up, restart with --num-threads=10
+slurmstepd: error: Munge encode failed: Failed to receive message header: Bad file descriptor
+slurmstepd: error: slurm_buffers_pack_msg: auth_g_create: MESSAGE_TASK_EXIT has authentication error
+slurmstepd: error: If munged is up, restart with --num-threads=10
+slurmstepd: error: Munge encode failed: Received invalid message magic 67108864
+slurmstepd: error: slurm_buffers_pack_msg: auth_g_create: MESSAGE_TASK_EXIT has authentication error
+slurmstepd: error: If munged is up, restart with --num-threads=10
+slurmstepd: error: Munge encode failed: Failed to receive message header: Bad file descriptor
+slurmstepd: error: slurm_buffers_pack_msg: auth_g_create: MESSAGE_TASK_EXIT has authentication error
+slurmstepd: error: Failed to send MESSAGE_TASK_EXIT: Protocol authentication error
+slurmstepd: error: *** JOB 2061336 ON a0801 CANCELLED AT 2024-09-20T18:55:43 DUE TO TIME LIMIT ***
+=== JOB_STATISTICS ===
+=== current date     : Fri Sep 20 18:55:45 CEST 2024
+= Job-ID             : 2061336 on alex
+= Job-Name           : nvshmem
+= Job-Command        : /home/hpc/hesp/hesp112h/hpc-project/boltzmann-nvshmem1/test.sh
+= Initial workdir    : /home/hpc/hesp/hesp112h/hpc-project/boltzmann-nvshmem1
+= Queue/Partition    : a100
+= Slurm account      : hesp with QOS=normal
+= Features           : a100_40
+= Requested resources:  for 00:30:00
+= Elapsed runtime    : 00:30:05
+= Total RAM usage    : 0.0 GiB of assigned  GiB (%)
+= Node list          : a0801
+= Subm/Elig/Start/End: 2024-09-20T18:25:36 / 2024-09-20T18:25:36 / 2024-09-20T18:25:38 / 2024-09-20T18:55:43
+======================
+=== Quota infos ======
+    Path              Used     SoftQ    HardQ    Gracetime  Filec    FileQ    FiHaQ    FileGrace    
+    /home/woody          0.0K  1000.0G  1500.0G        N/A       1    5,000K   7,500K        N/A    
+    /home/hpc           99.1G   104.9G   209.7G        N/A  36,517      500K   1,000K        N/A    
+======================
+=== GPU utilization ==
+gpu_name, gpu_bus_id, pid, gpu_utilization [%], mem_utilization [%], max_memory_usage [MiB], time [ms]

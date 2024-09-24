@@ -1,0 +1,66 @@
+### Starting TaskPrologue of job 2061332 on a0901 at Fri Sep 20 18:21:32 CEST 2024
+Running on cores 48-63,96-127 with governor ondemand
+Fri Sep 20 18:21:32 2024       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 560.28.03              Driver Version: 560.28.03      CUDA Version: 12.6     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-40GB          On  |   00000000:4F:00.0 Off |                    0 |
+| N/A   43C    P0             55W /  400W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   1  NVIDIA A100-SXM4-40GB          On  |   00000000:CC:00.0 Off |                    0 |
+| N/A   33C    P0             51W /  400W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+|   2  NVIDIA A100-SXM4-40GB          On  |   00000000:D1:00.0 Off |                    0 |
+| N/A   35C    P0             60W /  400W |       1MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+### Finished TaskPrologue
+
+nvcc -DHAVE_CUB -ccbin=mpic++ -dc -Xcompiler -fopenmp -lineinfo -DUSE_NVTX -lnvToolsExt -gencode arch=compute_70,code=sm_70 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_90,code=sm_90 -gencode arch=compute_90,code=compute_90 -std=c++14 -I/usr/local/nvshmem/include -c d2q9-bgk.cu -o d2q9-bgk.o
+nvcc -gencode arch=compute_70,code=sm_70 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_90,code=sm_90 -gencode arch=compute_90,code=compute_90 d2q9-bgk.o d2q9-kernel.o -o d2q9-bgk -ccbin=mpic++ -L/usr/local/nvshmem/lib -lnvshmem -L/usr/local/cuda/lib64 -lcuda -lcudart -lnvToolsExt -lnvidia-ml
+Error at line 263 of file d2q9-bgk.cu:
+could not open input parameter file: test/input_8x16.params
+Error at line 263 of file d2q9-bgk.cu:
+could not open input parameter file: test/input_8x16.params
+Error at line 263 of file d2q9-bgk.cu:
+could not open input parameter file: test/input_8x16.params
+srun: error: a0901: tasks 1-2: Exited with exit code 1
+srun: Terminating StepId=2061332.0
+slurmstepd: error: *** STEP 2061332.0 ON a0901 CANCELLED AT 2024-09-20T18:21:46 ***
+srun: error: a0901: task 0: Exited with exit code 1
+=== JOB_STATISTICS ===
+=== current date     : Fri Sep 20 18:21:47 CEST 2024
+= Job-ID             : 2061332 on alex
+= Job-Name           : nvshmem
+= Job-Command        : /home/hpc/hesp/hesp112h/hpc-project/boltzmann-nvshmem1/test.sh
+= Initial workdir    : /home/hpc/hesp/hesp112h/hpc-project/boltzmann-nvshmem1
+= Queue/Partition    : a100
+= Slurm account      : hesp with QOS=normal
+= Features           : a100_40
+= Requested resources:  for 00:30:00
+= Elapsed runtime    : 00:00:18
+= Total RAM usage    : 0.0 GiB of assigned  GiB (%)
+= Node list          : a0901
+= Subm/Elig/Start/End: 2024-09-20T18:21:28 / 2024-09-20T18:21:28 / 2024-09-20T18:21:28 / 2024-09-20T18:21:46
+======================
+=== Quota infos ======
+    Path              Used     SoftQ    HardQ    Gracetime  Filec    FileQ    FiHaQ    FileGrace    
+    /home/woody          0.0K  1000.0G  1500.0G        N/A       1    5,000K   7,500K        N/A    
+    /home/hpc           99.1G   104.9G   209.7G        N/A  36,507      500K   1,000K        N/A    
+======================
+=== GPU utilization ==
+gpu_name, gpu_bus_id, pid, gpu_utilization [%], mem_utilization [%], max_memory_usage [MiB], time [ms]
