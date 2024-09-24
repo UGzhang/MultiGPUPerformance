@@ -216,8 +216,8 @@ int main(int argc, char* argv[])
     for (int tt = 0; tt < params.maxIters; tt++)
     {
         accelerate_flow(params, cells_d, obstacles_d);
-        cudaDeviceSynchronize();
-        nvshmem_barrier_all();
+        cudaDeviceSynchronize(); // waiting to delete
+        nvshmem_barrier_all(); // waiting to delete
         
         // propagate+rebound+collision
         propagate_rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
@@ -225,15 +225,7 @@ int main(int argc, char* argv[])
         cudaDeviceSynchronize(); // waiting to delete
         nvshmem_barrier_all(); // waiting to delete
         
-//         if ( tt ==2 && params.rank == 3 ) 
-//         {
-//         t_speed* temp = NULL;
-//         cudaMallocHost((void**)&temp, sizeof(t_speed) * params.nx * (params.nyLocal+2));
-//         cudaMemcpy(temp, cells_d, sizeof(t_speed) * params.nx * (params.nyLocal+2), cudaMemcpyDeviceToHost);
-//         print(&params, temp);
-//         cudaFreeHost(temp);
-//         printf("------------exchange------------")
-//         }
+
         swap(&tmp_cells_d, &cells_d);
         cudaDeviceSynchronize(); // waiting to delete
         nvshmem_barrier_all(); // waiting to delete
@@ -242,17 +234,6 @@ int main(int argc, char* argv[])
         cudaDeviceSynchronize(); // waiting to delete
         nvshmem_barrier_all(); // waiting to delete
 
-
-
-//         if ( tt ==1 && params.rank == 3 ) 
-//         {
-//          sleep(2);   
-//         t_speed* temp = NULL;
-//         cudaMallocHost((void**)&temp, sizeof(t_speed) * params.nx * (params.nyLocal+2));
-//         cudaMemcpy(temp, cells_d, sizeof(t_speed) * params.nx * (params.nyLocal+2), cudaMemcpyDeviceToHost);
-//         print(&params, temp);
-//         cudaFreeHost(temp);
-//         }
 
     }
     double stop = getTimeStamp();
