@@ -1,0 +1,17 @@
+Runtime loop: 967.906518 s
+Num GPUs: 4, Runtime all: 1027.987480 s
+
+Runtime loop: 967.899591 s
+Num GPUs: 4, Runtime all: 1028.103229 s
+
+Runtime loop: 967.876545 s
+Num GPUs: 4, Runtime all: 1028.077785 s
+
+Runtime loop: 967.998964 s
+Num GPUs: 4, Runtime all: 1028.009486 s
+
+Runtime loop: 967.967596 s
+Num GPUs: 4, Runtime all: 1028.024395 s
+
+967.9298428
+8391620591.533227598094261 x 4 = 33566482366.132912

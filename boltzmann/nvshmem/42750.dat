@@ -1,0 +1,23 @@
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 48254421600
+Runtime loop: 1035.915976 s
+Num GPUs: 3, Runtime all: 1153.955043 s
+
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 48254421600
+Runtime loop: 1034.523000 s
+Num GPUs: 3, Runtime all: 1151.589962 s
+
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 48254421600
+Runtime loop: 1090.649181 s
+Num GPUs: 3, Runtime all: 1236.259191 s
+
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 48254421600
+Runtime loop: 1040.478095 s
+Num GPUs: 3, Runtime all: 1158.307398 s
+
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 48254421600
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 48254421600
+Runtime loop: 1042.561999 s
+Num GPUs: 3, Runtime all: 1161.544678 s
+
+1048.8256502
+5808281861.564258680827598 x 3 = 17424845584.692776042482795

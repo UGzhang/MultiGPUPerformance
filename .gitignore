@@ -1,0 +1,10 @@
+*.o
+*.out
+
+d2q9-bgk
+jacobi
+
+.DS_Store
+
+final_state.dat
+final_state.png

@@ -1,0 +1,1 @@
+Setting environment variable NVSHMEM_SYMMETRIC_SIZE = 738557952
