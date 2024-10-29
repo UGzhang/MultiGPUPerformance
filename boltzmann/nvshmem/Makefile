@@ -3,7 +3,6 @@ NP ?= 1
 NVCC=nvcc
 MPIRUN ?= mpirun
 CUDA_HOME ?= /usr/local/cuda
-NVSHMEM_HOME ?= /usr/local/nvshmem
 ifndef NVSHMEM_HOME
 $(error NVSHMEM_HOME is not set)
 endif
@@ -34,20 +33,23 @@ ifdef USE_LTO
 	NVCC_FLAGS += -maxrregcount=32
 	NVCC_LDFLAGS += -maxrregcount=32 -dlto
 endif
-jacobi: Makefile d2q9-bgk.cu
+d2q9-bgk: Makefile d2q9-kernel.o d2q9-bgk.cu
 	$(NVCC) $(NVCC_FLAGS) d2q9-bgk.cu -c -o d2q9-bgk.o
-	$(NVCC) $(GENCODE_FLAGS) d2q9-bgk.o -o d2q9-bgk $(NVCC_LDFLAGS)
+	$(NVCC) $(GENCODE_FLAGS) d2q9-bgk.o d2q9-kernel.o -o d2q9-bgk $(NVCC_LDFLAGS)
+
+d2q9-kernel.o: Makefile d2q9-kernel.cu
+	$(NVCC) $(NVCC_FLAGS) d2q9-kernel.cu -c
+
 
 .PHONY.: clean
 clean:
-	rm -f d2q9-bgk d2q9-bgk.o *.nsys-rep jacobi.*.compute-sanitizer.log
+	rm -f d2q9-bgk d2q9-bgk.o d2q9-kernel.o *.nsys-rep d2q9-bgk.*.compute-sanitizer.log *.dat *.png
 
 sanitize: d2q9-bgk
-	$(MPIRUN) -np $(NP) compute-sanitizer --log-file jacobi.%q{OMPI_COMM_WORLD_RANK}.compute-sanitizer.log ./d2q9-bgk -niter 10
+	$(MPIRUN) -np $(NP) compute-sanitizer --log-file d2q9-bgk.%q{OMPI_COMM_WORLD_RANK}.compute-sanitizer.log ./d2q9-bgk -niter 10
 
 run: d2q9-bgk
 	$(MPIRUN) -np $(NP) ./d2q9-bgk
 
 profile: d2q9-bgk
 	$(MPIRUN) -np $(NP) nsys profile --trace=mpi,cuda,nvtx -o d2q9-bgk.%q{OMPI_COMM_WORLD_RANK} ./d2q9-bgk -niter 10
-

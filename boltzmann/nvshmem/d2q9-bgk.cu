@@ -88,6 +88,7 @@ const int num_colors = sizeof(colors) / sizeof(uint32_t);
 #endif
 
 
+
 #define MPI_CALL(call)                                                                \
     {                                                                                 \
         int mpi_status = call;                                                        \
@@ -192,31 +193,6 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 /* utility functions */
 void die(const char* message, const int line, const char* file);
 void usage(const char* exe);
-static int sizeOfRank(int rank, int size, int N);
-
-// static void print(t_param* params, t_speed* cell)
-// {
-//     int nx = params->nx;
-//     int maxNy = sizeOfRank(0, params->size, params->ny);
-//     for (int i = 0; i < params->size; i++) {
-//         if (i == params->rank) {
-//             printf("### RANK %d "
-//                    "#######################################################\n",
-//                 params->rank);
-//             for (int j = 0; j < maxNy+2; j++) {
-//                 printf("%02d:", j);
-//                 for (int i = 0; i < nx; i++) {
-//                     // for(int k =0; k<NSPEEDS; k++)
-//                       printf("%12.6f ", cell[j * nx + i].speeds[2]);
-                  
-//                 }
-//                 printf("\n");
-//             }
-//             fflush(stdout);
-//         }
-//         MPI_Barrier(MPI_COMM_WORLD);
-//     }
-// }
 
 
 int main(int argc, char* argv[])
@@ -236,6 +212,7 @@ int main(int argc, char* argv[])
     float* av_vels_d   = NULL;
     int*     obstacles_d = NULL;
 
+
     /* parse the command line */
     if (argc != 3)
     {
@@ -247,38 +224,41 @@ int main(int argc, char* argv[])
         obstaclefile = argv[2];
     }
 
-
     MPI_Init(&argc, &argv);
     double start_all = MPI_Wtime();
 
     initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels, &obstacles_all);
-
     dataToDevices(&params, &cells_d, &tmp_cells_d, &obstacles_d, &av_vels_d, &cells, &obstacles);
     MPI_Barrier(MPI_COMM_WORLD);
-   
-    double start = MPI_Wtime();
-    PUSH_RANGE("Boltzmann kernel (mpi)", 0)
 
+    double start = MPI_Wtime();
+    PUSH_RANGE("Boltzmann kernel (nvshmem)", 0)
     for (int tt = 0; tt < params.maxIters; tt++)
     {
-       
+
         PUSH_RANGE("accelerate", 1)
         accelerate_flow(params, cells_d, obstacles_d);
         POP_RANGE
-       
-        PUSH_RANGE("combination", 2)
+
         // propagate+rebound+collision
+        PUSH_RANGE("combination", 2)
         propagate_rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
         POP_RANGE
-
+        
+        CUDA_RT_CALL(cudaDeviceSynchronize());
+        nvshmem_barrier_all();
+        
         swap(&tmp_cells_d, &cells_d);
-        exchange_ghost_cells(&params, cells_d);
-        nvshmem_barrier_all(); 
 
+        PUSH_RANGE("exchange", 3)
+        exchange_ghost_cells(&params, cells_d);
+        POP_RANGE
 
     }
-    POP_RANGE
+
+    MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
     double stop = MPI_Wtime();
+    POP_RANGE
 
     if (params.rank == 0)
     {
@@ -286,7 +266,7 @@ int main(int argc, char* argv[])
     }
 
     dataToHost(&params, cells_d, cells);
-    if(params.nx <= 1024 && params.ny <= 1024)
+    if(params.nx <= 1024 && params.ny <= 1024) 
         collectResult(params, cells, av_vels, obstacles_all);
     finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels, &cells_d, &tmp_cells_d,& obstacles_d );
 
@@ -348,12 +328,17 @@ int init_nvshmem(t_param* params){
 
         MPI_CALL(MPI_Comm_free(&local_comm));
     }
-
+    if ( 1 < num_devices && num_devices < local_size )
+    {
+        fprintf(stderr,"ERROR Number of visible devices (%d) is less than number of ranks on the node (%d)!\n", num_devices, local_size);
+        MPI_CALL(MPI_Finalize());
+        return 1;
+    }
     if ( 1 == num_devices ) {
         // Only 1 device visible, assuming GPU affinity is handled via CUDA_VISIBLE_DEVICES
         CUDA_RT_CALL(cudaSetDevice(0));
     } else {
-        CUDA_RT_CALL(cudaSetDevice(local_rank ));
+        CUDA_RT_CALL(cudaSetDevice(local_rank));
     }
     CUDA_RT_CALL(cudaFree(0));
 
@@ -362,8 +347,6 @@ int init_nvshmem(t_param* params){
 
     mpi_comm = MPI_COMM_WORLD;
     attr.mpi_comm = &mpi_comm;
-
-
 
     long long unsigned int mesh_size_per_rank = params->nx * (((params->ny - 2) + params->size - 1) / params->size + 2);
     long long unsigned int required_symmetric_heap_size = 2 * mesh_size_per_rank * sizeof(t_speed) * 1.1; 
@@ -385,14 +368,14 @@ int init_nvshmem(t_param* params){
     }
 
     nvshmemx_init_attr(NVSHMEMX_INIT_WITH_MPI_COMM, &attr);
-   
+
+
     MPI_Type_contiguous(NSPEEDS, MPI_FLOAT, &MPI_T_SPEED);
     MPI_Type_commit(&MPI_T_SPEED);
 
     return EXIT_SUCCESS;
+
 }
-
-
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
@@ -446,22 +429,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
     /* and close up the file */
     fclose(fp);
 
-  
-
     init_nvshmem(params);
-
-   
 
     params->nyLocal = sizeOfRank(params->rank, params->size, params->ny);
 
     long long sizeLocal = (long long)(params->nyLocal + 2) * (long long)params->nx;
 
     CUDA_RT_CALL(cudaMallocHost((void**)cells_ptr, sizeof(t_speed) * sizeLocal));
-   
 
     CUDA_RT_CALL(cudaMallocHost((void**)tmp_cells_ptr, sizeof(t_speed) * sizeLocal));
-
-     
 
 
     /* initialise densities */
@@ -503,8 +479,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
     // }
     // }
 
-
-   
 
     CUDA_RT_CALL(cudaMallocHost((void**)obstacles_ptr, sizeof(int) * sizeLocal));
     memset(*obstacles_ptr, 0, sizeof(int) * sizeLocal);
@@ -553,10 +527,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
     }
 
     scatter_obstacle(params,*obstacles_all_ptr,*obstacles_ptr);
-       
 
     CUDA_RT_CALL(cudaMallocHost((void**)av_vels_ptr, sizeof(float) * params->maxIters));
-     
 
     return EXIT_SUCCESS;
 }
@@ -572,6 +544,7 @@ int dataToHost(t_param* params, t_speed* cells_d, t_speed* cells_h)
 int dataToDevices(t_param* params, t_speed**  cells_d, t_speed**  tmp_cells_d,
                   int**  obstacles_d, float** av_vels_d, t_speed**  cells_h, int** obstacles_h){
 
+
     cudaStream_t stream1, stream2;
     cudaStreamCreate(&stream1);
     cudaStreamCreate(&stream2);
@@ -579,14 +552,10 @@ int dataToDevices(t_param* params, t_speed**  cells_d, t_speed**  tmp_cells_d,
     int maxNy = sizeOfRank(0, params->size, params->ny);
     int symmetricSize = (maxNy+2) * params->nx;
 
-
     *cells_d = (t_speed*)nvshmem_malloc(sizeof(t_speed) * symmetricSize);
-
     *tmp_cells_d = (t_speed*)nvshmem_malloc(sizeof(t_speed) * symmetricSize);
-     
     *obstacles_d = (int*)nvshmem_malloc(sizeof(int) * symmetricSize);
-    
-    
+
     int size = (params->nyLocal+2) * params->nx;
 
     CUDA_RT_CALL(cudaMemcpyAsync(*cells_d, *cells_h, sizeof(t_speed) * size, cudaMemcpyHostToDevice, stream1));
@@ -599,7 +568,6 @@ int dataToDevices(t_param* params, t_speed**  cells_d, t_speed**  tmp_cells_d,
     cudaStreamDestroy(stream1);
     cudaStreamDestroy(stream2);
 
-    return EXIT_SUCCESS;
 
 }
 
@@ -785,8 +753,6 @@ void scatter_obstacle(const t_param* params, int *obstacles_all, int *obstacles_
     int size = params->size;
     int rank = params->rank;
 
-
-
     // Allocate memory for receive counts and displacements on rank 0
     if (rank == 0) {
         rcvCounts = (long long*) malloc(size * sizeof(long long));
@@ -867,214 +833,4 @@ void exchange_ghost_cells(const t_param* params, t_speed* cells) {
     // printf("rank:%d, nyLocal:%d\n", rank, params->nyLocal);
     exchange_kernel<<<1,1>>>(cells, params->nx, params->nyLocal, down, up, recv_up);
 
-}
-
-
-
-__global__ void accelerate_kernel(t_speed* cells, int* obstacles, int nyLocal, int nx, float w1, float w2)
-{
- 
-    int ii = blockIdx.x * blockDim.x + threadIdx.x;
-    int gridStrideX = gridDim.x * blockDim.x;
-    
-    int jdx = nyLocal - 1;
-
-    for(int idx = ii; idx < nx; idx += gridStrideX){
-          int index = idx + jdx * nx;
-          /* if the cell is not occupied and
-           ** we don't send a negative density */
-            if (!obstacles[index] &&
-                (cells[index].speeds[3] - w1) > 0.f &&
-                (cells[index].speeds[6] - w2) > 0.f &&
-                (cells[index].speeds[7] - w2) > 0.f) {
-
-               /* increase 'east-side' densities */
-                cells[index].speeds[1] += w1;
-                cells[index].speeds[5] += w2;
-                cells[index].speeds[8] += w2;
-
-                /* decrease 'west-side' densities */
-                cells[index].speeds[3] -= w1;
-                cells[index].speeds[6] -= w2;
-                cells[index].speeds[7] -= w2;
-            }   
-    }
-
-}
-
-void accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
-{
-  if(params.rank == params.size - 1){
-
-    dim3 threadsPerBlock(64); // 每个线程块 16x16 个线程
-    dim3 blocksPerGrid(32);
-    float w1 = params.density * params.accel / 9.f;
-    float w2 = params.density * params.accel / 36.f;
-    accelerate_kernel<<<blocksPerGrid, threadsPerBlock>>>(cells, obstacles, params.nyLocal, params.nx, w1, w2);
-    // cudaDeviceSynchronize();
-  }
-
-}
-
-
-
-
-__global__ void propagate_rebound_collision_kernel
-(t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx, float omega, bool rankIsLast, float w1_flow, float w2_flow)
-{
-  const float c_sq = 1.f / 3.f; /* square of speed of sound */
-  const float w0 = 4.f / 9.f;  /* weighting factor */
-  const float w1 = 1.f / 9.f;  /* weighting factor */
-  const float w2 = 1.f / 36.f; /* weighting factor */
-
-  /* loop over the cells in the grid
-  ** NB the collision step is called after
-  ** the propagate step and so values of interest
-  ** are in the scratch-space grid */
-
-
-  int idx = blockIdx.x * blockDim.x + threadIdx.x ;
-  int jdx = blockIdx.y * blockDim.y + threadIdx.y + 1;
-
-  int gridStrideX = gridDim.x * blockDim.x;
-  int gridStrideY = gridDim.y * blockDim.y;
-  const int ySize = nyLocal+1;
-
-
-  for(long long jj = jdx; jj < ySize; jj += gridStrideY)
-  {
-    for(long long ii = idx; ii < nx; ii += gridStrideX)
-    {
-      long long index = ii + jj * nx;
-
-      int y_n = (jj + 1) % (nyLocal+2);
-      int x_e = (ii + 1) % nx;
-      int y_s = (jj == 0) ? (jj + nyLocal + 2 - 1) : (jj - 1);
-      int x_w = (ii == 0) ? (ii + nx - 1) : (ii - 1);
-      /* propagate densities from neighbouring cells, following
-      ** appropriate directions of travel and writing into
-      ** scratch space grid */
-      float tmp[NSPEEDS];
-      tmp[0] = cells[index].speeds[0]; /* central cell, no movement */
-      tmp[1] = cells[x_w + jj*nx].speeds[1]; /* east */
-      tmp[2] = cells[ii + y_s*nx].speeds[2]; /* north */
-      tmp[3] = cells[x_e + jj*nx].speeds[3]; /* west */
-      tmp[4] = cells[ii + y_n*nx].speeds[4]; /* south */
-      tmp[5] = cells[x_w + y_s*nx].speeds[5]; /* north-east */
-      tmp[6] = cells[x_e + y_s*nx].speeds[6]; /* north-west */
-      tmp[7] = cells[x_e + y_n*nx].speeds[7]; /* south-west */
-      tmp[8] = cells[x_w + y_n*nx].speeds[8]; /* south-east */
-
-
-
-      /* don't consider occupied cells */      
-      if (!obstacles[index])
-      {
-        /* compute local density total */
-        float local_density = 0.f;
-
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          local_density += tmp[kk];
-        }
-
-        /* compute x velocity component */
-        float u_x = (tmp[1]
-                      + tmp[5]
-                      + tmp[8]
-                      - (tmp[3]
-                         + tmp[6]
-                         + tmp[7]))
-                     / local_density;
-        /* compute y velocity component */
-        float u_y = (tmp[2]
-                      + tmp[5]
-                      + tmp[6]
-                      - (tmp[4]
-                         + tmp[7]
-                         + tmp[8]))
-                     / local_density;
-
-        /* velocity squared */
-        float u_sq = u_x * u_x + u_y * u_y;
-
-
-        /* directional velocity components */
-        float u[NSPEEDS];
-        u[1] =   u_x;        /* east */
-        u[2] =         u_y;  /* north */
-        u[3] = - u_x;        /* west */
-        u[4] =       - u_y;  /* south */
-        u[5] =   u_x + u_y;  /* north-east */
-        u[6] = - u_x + u_y;  /* north-west */
-        u[7] = - u_x - u_y;  /* south-west */
-        u[8] =   u_x - u_y;  /* south-east */
-
-        /* equilibrium densities */
-        float d_equ[NSPEEDS];
-        /* zero velocity density: weight w0 */
-        d_equ[0] = w0 * local_density
-                   * (1.f - u_sq / (2.f * c_sq));
-        /* axis speeds: weight w1 */
-        d_equ[1] = w1 * local_density * (1.f + u[1] / c_sq
-                                         + (u[1] * u[1]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[2] = w1 * local_density * (1.f + u[2] / c_sq
-                                         + (u[2] * u[2]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[3] = w1 * local_density * (1.f + u[3] / c_sq
-                                         + (u[3] * u[3]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[4] = w1 * local_density * (1.f + u[4] / c_sq
-                                         + (u[4] * u[4]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        /* diagonal speeds: weight w2 */
-        d_equ[5] = w2 * local_density * (1.f + u[5] / c_sq
-                                         + (u[5] * u[5]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[6] = w2 * local_density * (1.f + u[6] / c_sq
-                                         + (u[6] * u[6]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[7] = w2 * local_density * (1.f + u[7] / c_sq
-                                         + (u[7] * u[7]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-        d_equ[8] = w2 * local_density * (1.f + u[8] / c_sq
-                                         + (u[8] * u[8]) / (2.f * c_sq * c_sq)
-                                         - u_sq / (2.f * c_sq));
-
-        /* relaxation step */
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          tmp_cells[index].speeds[kk] = tmp[kk] + omega * (d_equ[kk] - tmp[kk]);
-        }
-      }
-      else{
-                /* called after propagate, so taking values from scratch space
-                ** mirroring, and writing into main grid */
-                tmp_cells[index].speeds[1] = tmp[3];
-                tmp_cells[index].speeds[2] = tmp[4];
-                tmp_cells[index].speeds[3] = tmp[1];
-                tmp_cells[index].speeds[4] = tmp[2];
-                tmp_cells[index].speeds[5] = tmp[7];
-                tmp_cells[index].speeds[6] = tmp[8];
-                tmp_cells[index].speeds[7] = tmp[5];
-                tmp_cells[index].speeds[8] = tmp[6];
-      }
-    }
-
-  }
-
-}
-
-
-void propagate_rebound_collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles){
-
-    dim3 threadsPerBlock(16, 16); 
-    dim3 blocksPerGrid(32, 32);
-    bool rankIsLast = (params.rank == params.size -1);
-    float w1_flow = params.density * params.accel / 9.f;
-    float w2_flow = params.density * params.accel / 36.f; 
-
-    propagate_rebound_collision_kernel<<<blocksPerGrid, threadsPerBlock>>>
-          (cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega,rankIsLast,w1_flow,w2_flow);
 }
