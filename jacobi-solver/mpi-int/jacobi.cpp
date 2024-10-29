@@ -283,12 +283,12 @@ int main(int argc, char* argv[]) {
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (!csv && 0 == rank) {
-    //     printf(
-    //         "Jacobi relaxation: %d iterations on %d x %d mesh with norm check "
-    //         "every %d iterations\n",
-    //         iter_max, ny, nx, nccheck);
-    // }
+    if (!csv && 0 == rank) {
+        printf(
+            "Jacobi relaxation: %d iterations on %d x %d mesh with norm check "
+            "every %d iterations\n",
+            iter_max, ny, nx, nccheck);
+    }
 
     int iter = 0;
     bool calculate_norm = true;
@@ -348,9 +348,9 @@ int main(int argc, char* argv[]) {
             MPI_CALL(MPI_Allreduce(l2_norm_h, &l2_norm, 1, MPI_REAL_TYPE, MPI_SUM, MPI_COMM_WORLD));
             l2_norm = std::sqrt(l2_norm);
 
-            // if (!csv && 0 == rank && (iter % 100) == 0) {
-            //     printf("%5d, %0.6f\n", iter, l2_norm);
-            // }
+            if (!csv && 0 == rank && (iter % 100) == 0) {
+                printf("%5d, %0.6f\n", iter, l2_norm);
+            }
         }
 
         std::swap(a_new, a);
@@ -383,17 +383,15 @@ int main(int argc, char* argv[]) {
 
     if (rank == 0 && result_correct) {
         if (csv) {
-            printf("mpi_overlap, %d, %d, %d, %d, %d, 1, %f, %f\n", nx, ny, iter_max, nccheck, size,
-                   (stop - start), runtime_serial);
+            printf("mpi_overlap, %d, %d, %d, %d, %d, 1, %f, %f %f\n", nx, ny, iter_max, nccheck, size,
+                   (stop - start), runtime_serial, runtime_serial / (size * (stop - start)) * 100);
         } else {
-            // printf("Num GPUs: %d.\n", size);
-            // printf(
-            //     "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
-            //     "efficiency: %8.2f \n",
-            //     ny, nx, runtime_serial, size, (stop - start), runtime_serial / (stop - start),
-            //     runtime_serial / (size * (stop - start)) * 100);
+            printf("Num GPUs: %d.\n", size);
             printf(
-                "%d %8.4f %8.2f\n",size, (stop - start),runtime_serial / (size * (stop - start)) * 100);
+                "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
+                "efficiency: %8.2f \n",
+                ny, nx, runtime_serial, size, (stop - start), runtime_serial / (stop - start),
+                runtime_serial / (size * (stop - start)) * 100);
         }
     }
     CUDA_RT_CALL(cudaEventDestroy(reset_l2norm_done));
@@ -456,12 +454,12 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (print)
-    //     printf(
-    //         "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
-    //         "norm "
-    //         "check every %d iterations\n",
-    //         iter_max, ny, nx, nccheck);
+    if (print)
+        printf(
+            "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
+            "norm "
+            "check every %d iterations\n",
+            iter_max, ny, nx, nccheck);
 
     int iter = 0;
     bool calculate_norm = true;
@@ -501,7 +499,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
             CUDA_RT_CALL(cudaStreamSynchronize(compute_stream));
             l2_norm = *l2_norm_h;
             l2_norm = std::sqrt(l2_norm);
-            // if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
+            if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
         }
 
         std::swap(a_new, a);
