@@ -348,8 +348,8 @@ int main(int argc, char* argv[]) {
     } else {
         char symmetric_heap_size_str[100];
         sprintf(symmetric_heap_size_str, "%llu", required_symmetric_heap_size);
-        // if (!rank && !csv)
-            // printf("Setting environment variable NVSHMEM_SYMMETRIC_SIZE = %llu\n", required_symmetric_heap_size);
+        if (!rank && !csv)
+            printf("Setting environment variable NVSHMEM_SYMMETRIC_SIZE = %llu\n", required_symmetric_heap_size);
         setenv("NVSHMEM_SYMMETRIC_SIZE", symmetric_heap_size_str, 1);
     }
     nvshmemx_init_attr(NVSHMEMX_INIT_WITH_MPI_COMM, &attr);
@@ -447,9 +447,9 @@ int main(int argc, char* argv[]) {
     MPI_CALL(MPI_Allreduce(l2_norm_bufs[1].h, &l2_norms[1], 1, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD));
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (!mype) {
-    //     if (!csv) printf("Jacobi relaxation: %d iterations on %d x %d mesh\n", iter_max, ny, nx);
-    // }
+    if (!mype) {
+        if (!csv) printf("Jacobi relaxation: %d iterations on %d x %d mesh\n", iter_max, ny, nx);
+    }
 
     constexpr int dim_block_x = 32;
     constexpr int dim_block_y = 32;
@@ -534,9 +534,9 @@ int main(int argc, char* argv[]) {
             l2_norms[prev] = std::sqrt(l2_norms[prev]);
             l2_norm_greater_than_tol = (l2_norms[prev] > tol);
 
-            // if (!csv && (iter % 100) == 0) {
-            //     if (!mype) printf("%5d, %0.6f\n", iter, l2_norms[prev]);
-            // }
+            if (!csv && (iter % 100) == 0) {
+                if (!mype) printf("%5d, %0.6f\n", iter, l2_norms[prev]);
+            }
 
             // reset everything for next iteration
             l2_norms[prev] = 0.0;
@@ -588,18 +588,15 @@ int main(int argc, char* argv[]) {
                 printf("-norm_overlap");
             if (neighborhood_sync)
                 printf("-neighborhood_sync");
-            printf(", %d, %d, %d, %d, %d, 1, %f, %f\n", nx, ny, iter_max, nccheck, npes,
-                   (stop - start), runtime_serial);
+            printf(", %d, %d, %d, %d, %d, 1, %f, %f %f\n", nx, ny, iter_max, nccheck, npes,
+                   (stop - start), runtime_serial, runtime_serial / (npes * (stop - start)) * 100);
         } else {
-            // printf("Num GPUs: %d.\n", npes);
-            // printf(
-            //     "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
-            //     "efficiency: %8.2f \n",
-            //     ny, nx, runtime_serial, npes, (stop - start), runtime_serial / (stop - start),
-            //     runtime_serial / (npes * (stop - start)) * 100);
-
-                printf(
-                "%d %8.4f %8.2f\n",size, (stop - start),runtime_serial / (size * (stop - start)) * 100);
+            printf("Num GPUs: %d.\n", npes);
+            printf(
+                "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
+                "efficiency: %8.2f \n",
+                ny, nx, runtime_serial, npes, (stop - start), runtime_serial / (stop - start),
+                runtime_serial / (npes * (stop - start)) * 100);
         }
     }
 
@@ -661,12 +658,12 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (print)
-    //     printf(
-    //         "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
-    //         "norm "
-    //         "check every %d iterations\n",
-    //         iter_max, ny, nx, nccheck);
+    if (print)
+        printf(
+            "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
+            "norm "
+            "check every %d iterations\n",
+            iter_max, ny, nx, nccheck);
 
     constexpr int dim_block_x = 32;
     constexpr int dim_block_y = 32;
@@ -694,7 +691,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
             CUDA_RT_CALL(cudaStreamSynchronize(compute_stream));
             l2_norm = *l2_norm_h;
             l2_norm = std::sqrt(l2_norm);
-            // if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
+            if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
         }
 
         std::swap(a_new, a);
