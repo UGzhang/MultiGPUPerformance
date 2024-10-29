@@ -59,6 +59,35 @@
 #include <mpi.h>
 #include <cuda_runtime.h>
 
+
+#ifdef USE_NVTX
+#include <nvToolsExt.h>
+
+const uint32_t colors[] = {0x0000ff00, 0x000000ff, 0x00ffff00, 0x00ff00ff,
+                           0x0000ffff, 0x00ff0000, 0x00ffffff};
+const int num_colors = sizeof(colors) / sizeof(uint32_t);
+
+#define PUSH_RANGE(name, cid)                              \
+    {                                                      \
+        int color_id = cid;                                \
+        color_id = color_id % num_colors;                  \
+        nvtxEventAttributes_t eventAttrib = {0};           \
+        eventAttrib.version = NVTX_VERSION;                \
+        eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;  \
+        eventAttrib.colorType = NVTX_COLOR_ARGB;           \
+        eventAttrib.color = colors[color_id];              \
+        eventAttrib.messageType = NVTX_MESSAGE_TYPE_ASCII; \
+        eventAttrib.message.ascii = name;                  \
+        nvtxRangePushEx(&eventAttrib);                     \
+    }
+#define POP_RANGE nvtxRangePop();
+#else
+#define PUSH_RANGE(name, cid)
+#define POP_RANGE
+#endif
+
+
+
 #define MPI_CALL(call)                                                                \
     {                                                                                 \
         int mpi_status = call;                                                        \
@@ -226,20 +255,24 @@ int main(int argc, char* argv[])
     dataToDevices(&params, &cells_d, &tmp_cells_d, &obstacles_d, &av_vels_d, &cells, &obstacles);
     MPI_Barrier(MPI_COMM_WORLD);
     double start = MPI_Wtime();
-
+    PUSH_RANGE("Boltzmann kernel (mpi)", 0)
     for (int tt = 0; tt < params.maxIters; tt++)
     {
 
-        
+        PUSH_RANGE("accelerate", 1)
         accelerate_flow(params, cells_d, obstacles_d);
+        POP_RANGE
         // propagate+rebound+collision
+        PUSH_RANGE("combination", 2)
         propagate_rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
+        POP_RANGE
         cudaDeviceSynchronize();
         swap(&tmp_cells_d, &cells_d);
         exchange_ghost_cells(&params, cells_d);
 
 
     }
+    POP_RANGE
     double stop = MPI_Wtime();
 
     if (params.rank == 0)
