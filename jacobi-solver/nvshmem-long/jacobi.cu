@@ -144,138 +144,102 @@ __global__ void syncneighborhood_kernel(int my_pe, int num_pes, uint64_t* sync_a
 }
 
 __global__ void initialize_boundaries(real* __restrict__ const a_new, real* __restrict__ const a,
-                                      const real pi, const int offset, const long long nx,
-                                      const int my_ny, long long ny) {
-    for (long long iy = blockIdx.x * blockDim.x + threadIdx.x; iy < my_ny; iy += blockDim.x * gridDim.x) {
+                                      const real pi, const int offset, const int nx,
+                                      const int my_ny, int ny) {
+    for (int iy = blockIdx.x * blockDim.x + threadIdx.x; iy < my_ny; iy += blockDim.x * gridDim.x) {
         const real y0 = sin(2.0 * pi * (offset + iy) / (ny - 1));
-        a[(iy + 1) * nx + 0] = y0;
-        a[(iy + 1) * nx + (nx - 1)] = y0;
-        a_new[(iy + 1) * nx + 0] = y0;
-        a_new[(iy + 1) * nx + (nx - 1)] = y0;
+        long long index = (long long)(iy + 1) * nx;
+        a[index] = y0;
+        a[index + (nx - 1)] = y0;
+        a_new[index] = y0;
+        a_new[index + (nx - 1)] = y0;
     }
-}
-
-template <int BLOCK_DIM_X, int BLOCK_DIM_Y>
-__global__ void single_jacobi_kernel(real* __restrict__ const a_new, const real* __restrict__ const a,
-                              real* __restrict__ const l2_norm, const int iy_start,
-                              const long long iy_end, const long long nx, const int top_pe, const long long top_iy,
-                              const int bottom_pe, const long long bottom_iy) {
-#ifdef HAVE_CUB
-    typedef cub::BlockReduce<real, BLOCK_DIM_X, cub::BLOCK_REDUCE_WARP_REDUCTIONS, BLOCK_DIM_Y>
-        BlockReduce;
-    __shared__ typename BlockReduce::TempStorage temp_storage;
-#endif  // HAVE_CUB
-    long long iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start; //3
-    long long ix = blockIdx.x * blockDim.x + threadIdx.x + 1; //3
-    real local_l2_norm = 0.0;
-
-    if (iy < iy_end && ix < (nx - 1)) { //1
-        const real new_val = 0.25 * (a[iy * nx + ix + 1] + a[iy * nx + ix - 1] + 
-                                     a[(iy + 1) * nx + ix] + a[(iy - 1) * nx + ix]); //16
-        a_new[iy * nx + ix] = new_val; //2
-
-        real residue = new_val - a[iy * nx + ix]; //3
-        local_l2_norm += residue * residue; //2
-
-        if (iy_start == iy) {
-            nvshmem_float_p(a_new + top_iy * nx + ix, new_val, top_pe);
-        }
-        if ((iy_end - 1) == iy) {
-            nvshmem_float_p(a_new + bottom_iy * nx + ix, new_val, bottom_pe);
-        }
-    }
-
-
-#ifdef HAVE_CUB
-    real block_l2_norm = BlockReduce(temp_storage).Sum(local_l2_norm);
-    if (0 == threadIdx.y && 0 == threadIdx.x) atomicAdd(l2_norm, block_l2_norm);
-#else
-    atomicAdd(l2_norm, local_l2_norm); //1
-#endif  // HAVE_CUB
 }
 
 template <int BLOCK_DIM_X, int BLOCK_DIM_Y>
 __global__ void jacobi_kernel(real* __restrict__ const a_new, const real* __restrict__ const a,
                               real* __restrict__ const l2_norm, const int iy_start,
-                              const long long iy_end, const long long nx, const int top_pe, const long long top_iy,
-                              const int bottom_pe, const long long bottom_iy) {
+                              const int iy_end, const int nx, const int top_pe, const int top_iy,
+                              const int bottom_pe, const int bottom_iy) {
 #ifdef HAVE_CUB
     typedef cub::BlockReduce<real, BLOCK_DIM_X, cub::BLOCK_REDUCE_WARP_REDUCTIONS, BLOCK_DIM_Y>
         BlockReduce;
     __shared__ typename BlockReduce::TempStorage temp_storage;
 #endif  // HAVE_CUB
-    long long iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start; //3
-    long long ix = blockIdx.x * blockDim.x + threadIdx.x + 1; //3
+    int iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start;
+    int ix = blockIdx.x * blockDim.x + threadIdx.x + 1;
     real local_l2_norm = 0.0;
 
-    if (iy < iy_end && ix < (nx - 1)) { //1
-        const real new_val = 0.25 * (a[iy * nx + ix + 1] + a[iy * nx + ix - 1] + 
-                                     a[(iy + 1) * nx + ix] + a[(iy - 1) * nx + ix]); //16
-        a_new[iy * nx + ix] = new_val; //2
+    long long index = (long long)iy * nx + ix;
 
-        real residue = new_val - a[iy * nx + ix]; //3
-        local_l2_norm += residue * residue; //2
+    if (iy < iy_end && ix < (nx - 1)) {
+        const real new_val = 0.25 * (a[index + 1] + a[index - 1] +
+                                     a[index + nx] + a[index - nx]);
+        a_new[index] = new_val;
+
+        real residue = new_val - a[index];
+        local_l2_norm += residue * residue;
 
         if (iy_start == iy) {
-            nvshmem_float_p(a_new + top_iy * nx + ix, new_val, top_pe);
+            nvshmem_float_p(a_new + (long long)top_iy * nx + ix, new_val, top_pe);
         }
         if ((iy_end - 1) == iy) {
-            nvshmem_float_p(a_new + bottom_iy * nx + ix, new_val, bottom_pe);
+            nvshmem_float_p(a_new + (long long)bottom_iy * nx + ix, new_val, bottom_pe);
         }
     }
 #ifdef HAVE_CUB
     real block_l2_norm = BlockReduce(temp_storage).Sum(local_l2_norm);
     if (0 == threadIdx.y && 0 == threadIdx.x) atomicAdd(l2_norm, block_l2_norm);
 #else
-    atomicAdd(l2_norm, local_l2_norm); //1
+    atomicAdd(l2_norm, local_l2_norm);
 #endif  // HAVE_CUB
 }
 
 template <int BLOCK_DIM_X, int BLOCK_DIM_Y>
 __global__ void jacobi_block_comm_kernel(real* __restrict__ const a_new, const real* __restrict__ const a,
-                              real* __restrict__ const l2_norm, const long long iy_start,
-                              const long long iy_end, const long long nx, const int top_pe, const long long top_iy,
-                              const int bottom_pe, const long long bottom_iy) {
+                              real* __restrict__ const l2_norm, const int iy_start,
+                              const int iy_end, const int nx, const int top_pe, const int top_iy,
+                              const int bottom_pe, const int bottom_iy) {
 #ifdef HAVE_CUB
     typedef cub::BlockReduce<real, BLOCK_DIM_X, cub::BLOCK_REDUCE_WARP_REDUCTIONS, BLOCK_DIM_Y>
         BlockReduce;
     __shared__ typename BlockReduce::TempStorage temp_storage;
 #endif  // HAVE_CUB
-    long long iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start;//3
-    long long ix = blockIdx.x * blockDim.x + threadIdx.x + 1;//3
+    int iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start;
+    int ix = blockIdx.x * blockDim.x + threadIdx.x + 1;
     real local_l2_norm = 0.0;
 
+    long long index = (long long)iy * nx + ix;
+
     if (iy < iy_end && ix < (nx - 1)) {
-        const real new_val = 0.25 * (a[iy * nx + ix + 1] + a[iy * nx + ix - 1] + //9
-                                     a[(iy + 1) * nx + ix] + a[(iy - 1) * nx + ix]); //7
-        a_new[iy * nx + ix] = new_val; //2
-        real residue = new_val - a[iy * nx + ix]; //3
-        local_l2_norm += residue * residue; //2
+        const real new_val = 0.25 * (a[index + 1] + a[index - 1] +
+                                     a[index + nx] + a[index - nx]);
+        a_new[index] = new_val;
+        real residue = new_val - a[index];
+        local_l2_norm += residue * residue;
     }
 
     /* starting (x, y) coordinate of the block */
-    long long block_iy =
-        iy - threadIdx.y; /* Alternatively, block_iy = blockIdx.y * blockDim.y + iy_start */                  //1
-    long long block_ix = ix - threadIdx.x; /* Alternatively, block_ix = blockIdx.x * blockDim.x + 1 */              //1
+    int block_iy =
+        iy - threadIdx.y; /* Alternatively, block_iy = blockIdx.y * blockDim.y + iy_start */
+    int block_ix = ix - threadIdx.x; /* Alternatively, block_ix = blockIdx.x * blockDim.x + 1 */
 
     /* Communicate the boundaries */
     if ((block_iy <= iy_start) && (iy_start < block_iy + blockDim.y)) {
-        nvshmemx_float_put_nbi_block(a_new + top_iy * nx + block_ix, a_new + iy_start * nx + block_ix,
-                                   min(blockDim.x, int(nx - 1 - block_ix)), top_pe); //1024 * 7 * block
-         
+        nvshmemx_float_put_nbi_block(a_new + (long long)top_iy * nx + block_ix, a_new + (long long)iy_start * nx + block_ix,
+                                   min(blockDim.x, nx - 1 - block_ix), top_pe);
     }
-    if ((block_iy < iy_end) && (iy_end <= block_iy + blockDim.y)) { //1024 * 7 * block
-        nvshmemx_float_put_nbi_block(a_new + bottom_iy * nx + block_ix,
-                                   a_new + (iy_end - 1) * nx + block_ix,
-                                   min(blockDim.x, int(nx - 1 - block_ix)), bottom_pe);
+    if ((block_iy < iy_end) && (iy_end <= block_iy + blockDim.y)) {
+        nvshmemx_float_put_nbi_block(a_new + (long long)bottom_iy * nx + block_ix,
+                                   a_new + (long long)(iy_end - 1) * nx + block_ix,
+                                   min(blockDim.x, nx - 1 - block_ix), bottom_pe);
     }
 
 #ifdef HAVE_CUB
     real block_l2_norm = BlockReduce(temp_storage).Sum(local_l2_norm);
-    if (0 == threadIdx.y && 0 == threadIdx.x) atomicAdd(l2_norm, block_l2_norm); //1
-
+    if (0 == threadIdx.y && 0 == threadIdx.x) atomicAdd(l2_norm, block_l2_norm);
 #else
-    atomicAdd(l2_norm, local_l2_norm); //1
+    atomicAdd(l2_norm, local_l2_norm);
 #endif  // HAVE_CUB
 }
 
@@ -301,7 +265,6 @@ bool get_arg(char** begin, char** end, const std::string& arg) {
     return false;
 }
 
-
 struct l2_norm_buf {
     cudaEvent_t copy_done;
     real* d;
@@ -310,13 +273,15 @@ struct l2_norm_buf {
 
 int main(int argc, char* argv[]) {
     const int iter_max = get_argval<int>(argv, argv + argc, "-niter", 1000);
-    const long long nx = get_argval<int>(argv, argv + argc, "-nx", 16384);
-    const long long ny = get_argval<int>(argv, argv + argc, "-ny", 16384);
+    const int nx = get_argval<int>(argv, argv + argc, "-nx", 16384);
+    const int ny = get_argval<int>(argv, argv + argc, "-ny", 16384);
     const int nccheck = get_argval<int>(argv, argv + argc, "-nccheck", 1);
     const bool csv = get_arg(argv, argv + argc, "-csv");
     const bool use_block_comm = get_arg(argv, argv + argc, "-use_block_comm");
     const bool norm_overlap = get_arg(argv, argv + argc, "-norm_overlap");
     const bool neighborhood_sync = get_arg(argv, argv + argc, "-neighborhood_sync");
+
+    long long nx_long = static_cast<long long>(nx);
 
     if (nccheck != 1) {
         fprintf(stderr, "Only nccheck=1 is supported\n");
@@ -394,7 +359,6 @@ int main(int argc, char* argv[]) {
             printf("Setting environment variable NVSHMEM_SYMMETRIC_SIZE = %llu\n", required_symmetric_heap_size);
         setenv("NVSHMEM_SYMMETRIC_SIZE", symmetric_heap_size_str, 1);
     }
-
     nvshmemx_init_attr(NVSHMEMX_INIT_WITH_MPI_COMM, &attr);
 
     int npes = nvshmem_n_pes();
@@ -412,37 +376,35 @@ int main(int argc, char* argv[]) {
 
     l2_norm_buf l2_norm_bufs[2];
 
-    long long size_h = nx * ny * sizeof(real);
-
-
-    CUDA_RT_CALL(cudaMallocHost(&a_ref_h, size_h));
-    CUDA_RT_CALL(cudaMallocHost(&a_h, size_h));
+    long long size_cpu = nx_long * ny * sizeof(real);
+    CUDA_RT_CALL(cudaMallocHost(&a_ref_h, size_cpu));
+    CUDA_RT_CALL(cudaMallocHost(&a_h, size_cpu));
     runtime_serial = single_gpu(nx, ny, iter_max, a_ref_h, nccheck, !csv && (0 == mype), mype);
-    // runtime_serial = 1.;
     nvshmem_barrier_all();
 
     // ny - 2 rows are distributed amongst `size` ranks in such a way
     // that each rank gets either (ny - 2) / size or (ny - 2) / size + 1 rows.
     // This optimizes load balancing when (ny - 2) % size != 0
-    long long chunk_size;
-    long long chunk_size_low = (ny - 2) / npes;
-    long long chunk_size_high = chunk_size_low + 1;
+    int chunk_size;
+    int chunk_size_low = (ny - 2) / npes;
+    int chunk_size_high = chunk_size_low + 1;
     // To calculate the number of ranks that need to compute an extra row,
     // the following formula is derived from this equation:
     // num_ranks_low * chunk_size_low + (size - num_ranks_low) * (chunk_size_low + 1) = ny - 2
-    long long num_ranks_low = npes * chunk_size_low + npes -
+    int num_ranks_low = npes * chunk_size_low + npes -
                         (ny - 2);  // Number of ranks with chunk_size = chunk_size_low
     if (mype < num_ranks_low)
         chunk_size = chunk_size_low;
     else
         chunk_size = chunk_size_high;
-    
-    long long size_d = nx * (chunk_size_high + 2) * sizeof(real);
-    a = (real*)nvshmem_malloc(size_d);  // Using chunk_size_high so that it is same across all PEs
-    a_new = (real*)nvshmem_malloc(size_d);
 
-    CUDA_RT_CALL(cudaMemset(a, 0, nx * (chunk_size + 2) * sizeof(real)));
-    CUDA_RT_CALL(cudaMemset(a_new, 0, nx * (chunk_size + 2) * sizeof(real)));
+    a = (real*)nvshmem_malloc(
+        nx_long * (chunk_size_high + 2) *
+        sizeof(real));  // Using chunk_size_high so that it is same across all PEs
+    a_new = (real*)nvshmem_malloc(nx_long * (chunk_size_high + 2) * sizeof(real));
+
+    cudaMemset(a, 0, nx_long * (chunk_size + 2) * sizeof(real));
+    cudaMemset(a_new, 0, nx_long * (chunk_size + 2) * sizeof(real));
 
     // Calculate local domain boundaries
     int iy_start_global;  // My start index in the global array
@@ -452,26 +414,23 @@ int main(int argc, char* argv[]) {
         iy_start_global =
             num_ranks_low * chunk_size_low + (mype - num_ranks_low) * chunk_size_high + 1;
     }
-    long long iy_end_global = iy_start_global + chunk_size - 1;  // My last index in the global array
+    int iy_end_global = iy_start_global + chunk_size - 1;  // My last index in the global array
     // do not process boundaries
     iy_end_global = std::min(iy_end_global, ny - 4);
 
-    long long iy_start = 1;
-    long long iy_end = (iy_end_global - iy_start_global + 1) + iy_start;
+    int iy_start = 1;
+    int iy_end = (iy_end_global - iy_start_global + 1) + iy_start;
 
     // calculate boundary indices for top and bottom boundaries
     int top_pe = mype > 0 ? mype - 1 : (npes - 1);
     int bottom_pe = (mype + 1) % npes;
 
-    long long iy_end_top = (top_pe < num_ranks_low) ? chunk_size_low + 1 : chunk_size_high + 1;
-    long long iy_start_bottom = 0;
-
-                                                                  
+    int iy_end_top = (top_pe < num_ranks_low) ? chunk_size_low + 1 : chunk_size_high + 1;
+    int iy_start_bottom = 0;
 
     // Set diriclet boundary conditions on left and right boundary
     initialize_boundaries<<<(ny / npes) / 128 + 1, 128>>>(a, a_new, PI, iy_start_global - 1, nx,
                                                           chunk_size, ny - 2);
-
     CUDA_RT_CALL(cudaGetLastError());
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
@@ -496,7 +455,7 @@ int main(int argc, char* argv[]) {
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
     if (!mype) {
-        // if (!csv) printf("Jacobi relaxation: %d iterations on %d x %d mesh\n", iter_max, ny, nx);
+        if (!csv) printf("Jacobi relaxation: %d iterations on %d x %d mesh\n", iter_max, ny, nx);
     }
 
     constexpr int dim_block_x = 32;
@@ -529,15 +488,14 @@ int main(int argc, char* argv[]) {
     PUSH_RANGE("Jacobi solve", 0)
     bool l2_norm_greater_than_tol = true;
     
-    while (l2_norm_greater_than_tol && iter < iter_max) 
-    {
+    while (l2_norm_greater_than_tol && iter < iter_max) {
         int prev = 0;
         int curr = 0;
         if ( norm_overlap ) {
             // on new iteration: old current vars are now previous vars, old
             // previous vars are no longer needed
-            prev = iter % 2; //1
-            curr = (iter + 1) % 2;//2
+            prev = iter % 2;
+            curr = (iter + 1) % 2;
         }
 
         CUDA_RT_CALL(cudaStreamWaitEvent(compute_stream, reset_l2_norm_done[curr], 0));
@@ -561,13 +519,13 @@ int main(int argc, char* argv[]) {
             synchronization for this application. */
             syncneighborhood_kernel<<<1, 1, 0, compute_stream>>>(mype, npes, sync_arr, synccounter);
             CUDA_RT_CALL(cudaGetLastError());
-            synccounter++;//1
+            synccounter++;
         } else {
             nvshmemx_barrier_all_on_stream(compute_stream);
         }
 
         // perform L2 norm calculation
-        if ((iter % nccheck) == 0 || (!csv && (iter % 100) == 0)) { //1
+        if ((iter % nccheck) == 0 || (!csv && (iter % 100) == 0)) {
             // as soon as computation is complete -> D2H-copy L2 norm
             CUDA_RT_CALL(cudaMemcpyAsync(l2_norm_bufs[curr].h, l2_norm_bufs[curr].d, sizeof(real),
                                          cudaMemcpyDeviceToHost, compute_stream));
@@ -580,12 +538,12 @@ int main(int argc, char* argv[]) {
             MPI_CALL(MPI_Allreduce(l2_norm_bufs[prev].h, &l2_norms[prev], 1, MPI_FLOAT, MPI_SUM,
                                    MPI_COMM_WORLD));
 
-            l2_norms[prev] = std::sqrt(l2_norms[prev]);  //1
+            l2_norms[prev] = std::sqrt(l2_norms[prev]);
             l2_norm_greater_than_tol = (l2_norms[prev] > tol);
 
-            // if (!csv && (iter % 100) == 0) {
-            //     if (!mype) printf("%5d, %0.6f\n", iter, l2_norms[prev]);
-            // }
+            if (!csv && (iter % 100) == 0) {
+                if (!mype) printf("%5d, %0.6f\n", iter, l2_norms[prev]);
+            }
 
             // reset everything for next iteration
             l2_norms[prev] = 0.0;
@@ -596,9 +554,8 @@ int main(int argc, char* argv[]) {
         }
 
         std::swap(a_new, a);
-        iter++; //1
+        iter++;
     }
-
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
     MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
@@ -607,18 +564,18 @@ int main(int argc, char* argv[]) {
 
     nvshmem_barrier_all();
 
-    CUDA_RT_CALL(cudaMemcpy(a_h + iy_start_global * nx, a + nx,
-                            std::min(ny - 2 - iy_start_global, chunk_size) * nx * sizeof(real),
+    CUDA_RT_CALL(cudaMemcpy(a_h + iy_start_global * nx_long, a + nx,
+                            std::min(ny - 2 - iy_start_global, chunk_size) * nx_long * sizeof(real),
                             cudaMemcpyDeviceToHost));
 
     result_correct = true;
     for (int iy = iy_start_global; result_correct && (iy < iy_end_global); ++iy) {
         for (int ix = 1; result_correct && (ix < (nx - 1)); ++ix) {
-            if (std::fabs(a_ref_h[iy * nx + ix] - a_h[iy * nx + ix]) > tol) {
+            if (std::fabs(a_ref_h[iy * nx_long + ix] - a_h[iy * nx_long + ix]) > tol) {
                 fprintf(stderr,
                         "ERROR on rank %d: a[%d * %d + %d] = %f does not match %f "
                         "(reference)\n",
-                        rank, iy, nx, ix, a_h[iy * nx + ix], a_ref_h[iy * nx + ix]);
+                        rank, iy, nx, ix, a_h[iy * nx_long + ix], a_ref_h[iy * nx_long + ix]);
                 result_correct = false;
             }
         }
@@ -638,32 +595,17 @@ int main(int argc, char* argv[]) {
                 printf("-norm_overlap");
             if (neighborhood_sync)
                 printf("-neighborhood_sync");
-            printf(", %d, %d, %d, %d, %d, 1, %f, %f\n", nx, ny, iter_max, nccheck, npes,
-                   (stop - start), runtime_serial);
+            printf(", %d, %d, %d, %d, %d, 1, %f, %f %f\n", nx, ny, iter_max, nccheck, npes,
+                   (stop - start), runtime_serial, runtime_serial / (npes * (stop - start)) * 100);
         } else {
-            // printf("Num GPUs: %d.\n", npes);
-            // printf(
-            //     "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
-            //     "efficiency: %8.2f \n",
-            //     ny, nx, runtime_serial, npes, (stop - start), runtime_serial / (stop - start),
-            //     runtime_serial / (npes * (stop - start)) * 100);
-
-            int major;
-            int mirror;
-            nvshmem_info_get_version(&major, &mirror);
-            printf("%d %.5f %.5f %.5f %d %d\n", size, runtime_serial, (stop - start), runtime_serial / (npes * (stop - start)) * 100, major,mirror );
-            // int threads = dim_block_block_comm_x*dim_block_block_comm_y;
-            // int blocks = (nx + dim_block_block_comm_x - 1) / dim_block_block_comm_x  *(chunk_size + dim_block_block_comm_y - 1) / dim_block_block_comm_y;
-
-            // double flops_loop = size*iter * 7 * 1e-12 / (stop - start);
-            // double flops_kenel = (23*(nx-2)*chunk_size* 1e-12*iter + 8*threads*blocks*1e-12*iter + 4*blocks*iter*1e-12)/(stop - start)*size;
-            // printf("%d %f\n", size, flops_loop+flops_kenel);//TFLOPS
-            // printf("%d %f\n",size,  (nx-2)*chunk_size*1e-6*5*iter/(stop - start)*size);//MLUPS
+            printf("Num GPUs: %d.\n", npes);
+            printf(
+                "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
+                "efficiency: %8.2f \n",
+                ny, nx, runtime_serial, npes, (stop - start), runtime_serial / (stop - start),
+                runtime_serial / (npes * (stop - start)) * 100);
         }
     }
-    // if(mype == 0) system("nvidia-smi");
-
-
 
     for (int i = 0; i < 2; ++i) {
         CUDA_RT_CALL(cudaFreeHost(l2_norm_bufs[i].h));
@@ -704,11 +646,13 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
     int iy_start = 1;
     int iy_end = ny - 3;
 
-    CUDA_RT_CALL(cudaMalloc((void**)&a, nx * ny * sizeof(real)));
-    CUDA_RT_CALL(cudaMalloc((void**)&a_new, nx * ny * sizeof(real)));
+    long long nx_long = static_cast<long long>(nx);
 
-    CUDA_RT_CALL(cudaMemset(a, 0, nx * ny * sizeof(real)));
-    CUDA_RT_CALL(cudaMemset(a_new, 0, nx * ny * sizeof(real)));
+    CUDA_RT_CALL(cudaMalloc((void**)&a, nx_long * ny * sizeof(real)));
+    CUDA_RT_CALL(cudaMalloc((void**)&a_new, nx_long * ny * sizeof(real)));
+
+    CUDA_RT_CALL(cudaMemset(a, 0,nx_long * ny * sizeof(real)));
+    CUDA_RT_CALL(cudaMemset(a_new, 0, nx_long * ny * sizeof(real)));
 
     // Set diriclet boundary conditions on left and right boarder
     initialize_boundaries<<<ny / 128 + 1, 128>>>(a, a_new, PI, 0, nx, ny - 2, ny - 2);
@@ -723,12 +667,12 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (print)
-    //     printf(
-    //         "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
-    //         "norm "
-    //         "check every %d iterations\n",
-    //         iter_max, ny, nx, nccheck);
+    if (print)
+        printf(
+            "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
+            "norm "
+            "check every %d iterations\n",
+            iter_max, ny, nx, nccheck);
 
     constexpr int dim_block_x = 32;
     constexpr int dim_block_y = 32;
@@ -745,7 +689,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
     while (l2_norm > tol && iter < iter_max) {
         CUDA_RT_CALL(cudaMemsetAsync(l2_norm_d, 0, sizeof(real), compute_stream));
 
-        single_jacobi_kernel<dim_block_x, dim_block_y>
+        jacobi_kernel<dim_block_x, dim_block_y>
             <<<dim_grid, {dim_block_x, dim_block_y, 1}, 0, compute_stream>>>(
                 a_new, a, l2_norm_d, iy_start, iy_end, nx, mype, iy_end + 1, mype, (iy_start - 1));
         CUDA_RT_CALL(cudaGetLastError());
@@ -756,7 +700,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
             CUDA_RT_CALL(cudaStreamSynchronize(compute_stream));
             l2_norm = *l2_norm_h;
             l2_norm = std::sqrt(l2_norm);
-            // if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
+            if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
         }
 
         std::swap(a_new, a);
@@ -766,9 +710,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
     POP_RANGE
     double stop = MPI_Wtime();
 
-
-
-    CUDA_RT_CALL(cudaMemcpy(a_ref_h, a, nx * ny * sizeof(real), cudaMemcpyDeviceToHost));
+    CUDA_RT_CALL(cudaMemcpy(a_ref_h, a, nx_long * ny * sizeof(real), cudaMemcpyDeviceToHost));
 
     CUDA_RT_CALL(cudaStreamDestroy(compute_stream));
 
