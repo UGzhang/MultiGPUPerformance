@@ -1,5 +1,0 @@
-nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 1000, 1, 16, 1, 0.867851, 13.471065
-nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 1000, 1, 16, 1, 0.867759, 13.466160
-nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 1000, 1, 16, 1, 0.866826, 13.475343
-nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 1000, 1, 16, 1, 0.867996, 13.476537
-nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 1000, 1, 16, 1, 0.868035, 13.470343

@@ -1,6 +1,9 @@
 *.o
 *.out
 
+data/
+*csv
+
 d2q9-bgk
 jacobi
 
@@ -8,5 +11,4 @@ jacobi
 
 final_state.dat
 final_state.png
-*/jacobi
-*/*.o
+
