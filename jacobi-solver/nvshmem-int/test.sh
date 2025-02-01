@@ -6,33 +6,30 @@ module load nvhpc/24.3
 module load openmpi/4.1.6--nvhpc--24.3
 module load cuda/12.3
 
-make jacobi
 
-for GPU in 2;
-do
-    #for N in {2560,5120,10240,20480,40960};
-    for N in 20480;
-    do
-        #for i in {1..10}; 
-        for i in {1..10}; 
-        do
-            srun --ntasks=${GPU} --gres=gpu:${GPU} ./jacobi -nx ${N} -ny ${N} -neighborhood_sync -norm_overlap -use_block_comm -csv
-        done
+make clean
+make
 
-    done
-done
+N=40960
 
-# for NODE in 4;
+# for GPU in {1..4};
 # do
-#     TASKS=$(( ${NODE} * 4 ))
-#     #for N in {2560,5120,10240,20480,40960};
-#     for N in 20480;
+
+#     for i in 1; 
 #     do
-#         #for i in {1..10}; 
-#         for i in {1..10}; 
-#         do
-#             #srun ./jacobi -neighborhood_sync -norm_overlap -use_block_comm -nx ${N} -ny ${N} -csv >> strong_node.csv  
-#             srun -N ${NODE} --ntasks=${TASKS} --gres=gpu:4 ./jacobi -neighborhood_sync -norm_overlap -use_block_comm -nx ${N} -ny ${N} >> ${N}-100-${TASKS}.txt
-#         done
+#         srun -N 1 --ntasks=${GPU} --gres=gpu:${GPU} ./jacobi -nx ${N} -ny ${N} -neighborhood_sync -norm_overlap -use_block_comm -csv -niter 100 >> test.txt
+#         # mpirun -n $GPU --map-by ppr:$GPU:node ./jacobi  -neighborhood_sync -norm_overlap -use_block_comm -nx $N -ny $N -csv
 #     done
+
 # done
+
+
+export NCCL_DEBUG="WARN"
+for NODE in 3
+do
+TASKS=$(( ${NODE} * 4 ))
+for i in 10; 
+do
+    srun -N ${NODE} --ntasks=${TASKS} --gres=gpu:4 ./jacobi -nx ${N} -ny ${N} -neighborhood_sync -norm_overlap -use_block_comm -csv -niter 100 
+done
+done

@@ -1,0 +1,10 @@
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130917, 0.240797 91.965562
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130766, 0.222324 85.008295
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130385, 0.222353 85.267636
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130574, 0.222059 85.031574
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130695, 0.222217 85.013899
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.131246, 0.222460 84.749270
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130818, 0.222127 84.899240
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130626, 0.222539 85.181819
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.133018, 0.241739 90.866827
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 5120, 5120, 1000, 1, 2, 1, 0.130974, 0.222249 84.844621

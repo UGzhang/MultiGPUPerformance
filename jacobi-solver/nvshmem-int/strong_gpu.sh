@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A EUHPC_D14_001
 #SBATCH -p boost_usr_prod
-#SBATCH --time 00:06:30     # format: HH:MM:SS
+#SBATCH --time 00:30:00     # format: HH:MM:SS
 #SBATCH -N 1                # 1 node
 #SBATCH --ntasks-per-node=4 # 1 tasks out of 32
 #SBATCH --gres=gpu:4        # 1 gpus per node out of 4
@@ -18,14 +18,19 @@ module load nvhpc/24.3
 module load openmpi/4.1.6--nvhpc--24.3
 module load cuda/12.3
 
-make jacobi
+make clean
+make 
 
-GPU=4
-N=20480
 
-for i in {1..50}; 
+for N in 5120, 10240, 20480, 40960
+do
+for GPU in {1..4}
+do
+for i in {1..10}; 
 do
     srun --ntasks=${GPU} --gres=gpu:${GPU} ./jacobi -nx ${N} -ny ${N} -neighborhood_sync -norm_overlap -use_block_comm -csv >> ${N}-${GPU}.csv 
+done
+done
 done
 
 

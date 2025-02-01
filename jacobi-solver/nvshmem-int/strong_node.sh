@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A EUHPC_D14_001
 #SBATCH -p boost_usr_prod
-#SBATCH --time 00:01:40     # format: HH:MM:SS
-#SBATCH -N 2                # 1 node
+#SBATCH --time 00:2:00     # format: HH:MM:SS
+#SBATCH -N 5                # 1 node
 #SBATCH --ntasks-per-node=4 # 1 tasks out of 32
 #SBATCH --gres=gpu:4        # 1 gpus per node out of 4
 #SBATCH --mem=494000          # memory per node out of 494000MB (481GB)
@@ -20,12 +20,20 @@ module load cuda/12.3
 
 make jacobi
 
-NODE=2
-N=20480
 
+N=40960
+
+for NODE in 5
+do
 TASKS=$(( ${NODE} * 4 ))
 for i in {1..10}; 
 do
-    srun -N ${NODE} --ntasks=${TASKS} --gres=gpu:4 ./jacobi -neighborhood_sync -norm_overlap -use_block_comm -nx ${N} -ny ${N}  -csv >> ${N}-${TASKS}.csv
+    srun --mpi=pmi2 -N ${NODE} --ntasks=${TASKS} --gres=gpu:4 ./jacobi -neighborhood_sync -norm_overlap -use_block_comm -nx ${N} -ny ${N}  -csv >> ${N}-${TASKS}.csv
 done
+done
+
+
+
+
+
 

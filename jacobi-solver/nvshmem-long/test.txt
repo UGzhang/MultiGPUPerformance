@@ -1,0 +1,24 @@
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 1, 1, 0.346218, 0.354122 102.282821
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 2, 1, 0.175069, 0.369618 105.563286
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 3, 1, 0.117839, 0.369971 104.653945
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 4, 1, 0.089096, 0.370002 103.820841
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 8, 1, 0.047004, 0.372507 99.063060
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 12, 1, 0.032712, 0.369135 94.035678
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 16, 1, 0.025511, 0.365209 89.472254
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 1, 1, 1.372079, 1.372194 100.008362
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 2, 1, 0.689048, 1.381914 100.277001
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 3, 1, 0.460818, 1.377356 99.631199
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 4, 1, 0.346758, 1.372434 98.947626
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 8, 1, 0.175991, 1.374030 97.592579
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 16, 1, 0.090416, 1.382130 95.540071
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 16, 1, 0.090988, 1.378339 94.678262
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 40960, 40960, 100, 1, 20, 1, 0.073567, 1.383736 94.046503
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'
+nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 100, 1, 12, 1, 0.033649, 0.363060 89.912709
+Failed, NCCL error /dvs/p4/build/sw/rel/gpgpu/toolkit/r12.0/main_nvshmem/src/host/team/team_internal.cpp:404 'internal error - please report this issue to the NCCL developers'

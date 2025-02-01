@@ -91,8 +91,6 @@ const int num_colors = sizeof(colors) / sizeof(uint32_t);
 #define POP_RANGE
 #endif
 
-
-
 #define CUDA_RT_CALL(call)                                                                  \
     {                                                                                       \
         cudaError_t cudaStatus = call;                                                      \
@@ -149,7 +147,6 @@ bool get_arg(char** begin, char** end, const std::string& arg) {
 }
 
 int main(int argc, char* argv[]) {
-    
     MPI_CALL(MPI_Init(&argc, &argv));
 #if !defined(SKIP_CUDA_AWARENESS_CHECK) && defined(MPIX_CUDA_AWARE_SUPPORT)
     if (1 != MPIX_Query_cuda_support()) {
@@ -167,10 +164,13 @@ int main(int argc, char* argv[]) {
 
     const int iter_max = get_argval<int>(argv, argv + argc, "-niter", 1000);
     const int nccheck = get_argval<int>(argv, argv + argc, "-nccheck", 1);
-    const long long nx = get_argval<long long>(argv, argv + argc, "-nx", 16384);
-    const long long ny = get_argval<long long>(argv, argv + argc, "-ny", 16384);
+    const int nx = get_argval<int>(argv, argv + argc, "-nx", 16384);
+    const int ny = get_argval<int>(argv, argv + argc, "-ny", 16384);
     const bool csv = get_arg(argv, argv + argc, "-csv");
     const bool use_hp_streams = get_arg(argv, argv + argc, "-use_hp_streams");
+
+    long long nx_long = static_cast<long long>(nx);
+
 
     if ( nccheck > 1 && !use_hp_streams && 0 == rank )
     {
@@ -193,17 +193,14 @@ int main(int argc, char* argv[]) {
 
     CUDA_RT_CALL(cudaSetDevice(local_rank%num_devices));
     CUDA_RT_CALL(cudaFree(0));
-    long long size_n = nx * ny * sizeof(real);
 
-    // printf("%lld\n", size_n);
+    long long size_cpu = nx_long * ny * sizeof(real);
+
     real* a_ref_h;
-    // CUDA_RT_CALL(cudaMallocHost(&a_ref_h, size_n));
-    // a_ref_h = (real*)malloc(size_n);
+    CUDA_RT_CALL(cudaMallocHost(&a_ref_h, size_cpu));
     real* a_h;
-    // CUDA_RT_CALL(cudaMallocHost(&a_h, size_n));
-    // a_h = (real*)malloc(size_n);
-    // double runtime_serial = single_gpu(nx, ny, iter_max, a_ref_h, nccheck, !csv && (0 == rank));
-    // double runtime_serial = 1.;
+    CUDA_RT_CALL(cudaMallocHost(&a_h, size_cpu));
+    double runtime_serial = single_gpu(nx, ny, iter_max, a_ref_h, nccheck, !csv && (0 == rank));
 
     // ny - 2 rows are distributed amongst `size` ranks in such a way
     // that each rank gets either (ny - 2) / size or (ny - 2) / size + 1 rows.
@@ -221,7 +218,7 @@ int main(int argc, char* argv[]) {
     else
         chunk_size = chunk_size_high;
 
-    long long size_gpu = (long long)nx * (chunk_size + 2) * (long long)sizeof(real);
+    long long size_gpu = nx_long * (chunk_size + 2) * sizeof(real);
 
     real* a;
     CUDA_RT_CALL(cudaMalloc(&a, size_gpu));
@@ -265,8 +262,7 @@ int main(int argc, char* argv[]) {
         CUDA_RT_CALL(cudaStreamCreate(&push_top_stream));
         CUDA_RT_CALL(cudaStreamCreate(&push_bottom_stream));
     }
-
-
+    
     cudaEvent_t push_top_done;
     CUDA_RT_CALL(cudaEventCreateWithFlags(&push_top_done, cudaEventDisableTiming));
     cudaEvent_t push_bottom_done;
@@ -279,27 +275,28 @@ int main(int argc, char* argv[]) {
     real* l2_norm_h;
     CUDA_RT_CALL(cudaMallocHost(&l2_norm_h, sizeof(real)));
 
+
     PUSH_RANGE("MPI_Warmup", 5)
     for (int i = 0; i < 10; ++i) {
         const int top = rank > 0 ? rank - 1 : (size - 1);
         const int bottom = (rank + 1) % size;
-        MPI_CALL(MPI_Sendrecv(a_new + (long long)iy_start * nx, nx, MPI_REAL_TYPE, top, 0,
-                              a_new + (long long)iy_end * nx, nx, MPI_REAL_TYPE, bottom, 0, MPI_COMM_WORLD,
+        
+        MPI_CALL(MPI_Sendrecv(a_new + iy_start * nx_long, nx, MPI_REAL_TYPE, top, 0,
+                              a_new + (iy_end * nx_long), nx, MPI_REAL_TYPE, bottom, 0, MPI_COMM_WORLD,
                               MPI_STATUS_IGNORE));
-        MPI_CALL(MPI_Sendrecv(a_new + (long long)(iy_end - 1) * nx, nx, MPI_REAL_TYPE, bottom, 0, a_new, nx,
+        MPI_CALL(MPI_Sendrecv(a_new + (iy_end - 1) * nx_long, nx, MPI_REAL_TYPE, bottom, 0, a_new, nx,
                               MPI_REAL_TYPE, top, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
         std::swap(a_new, a);
     }
     POP_RANGE
 
-
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
     if (!csv && 0 == rank) {
-        // printf(
-        //     "Jacobi relaxation: %d iterations on %d x %d mesh with norm check "
-        //     "every %d iterations\n",
-        //     iter_max, ny, nx, nccheck);
+        printf(
+            "Jacobi relaxation: %d iterations on %d x %d mesh with norm check "
+            "every %d iterations\n",
+            iter_max, ny, nx, nccheck);
     }
 
     int iter = 0;
@@ -309,33 +306,30 @@ int main(int argc, char* argv[]) {
     MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
     double start = MPI_Wtime();
     PUSH_RANGE("Jacobi solve", 0)
- 
-    while (l2_norm > tol && iter < iter_max)
-     {
+    while (l2_norm > tol && iter < iter_max) {
         CUDA_RT_CALL(cudaMemsetAsync(l2_norm_d, 0, sizeof(real), compute_stream));
         CUDA_RT_CALL(cudaEventRecord(reset_l2norm_done, compute_stream));
 
         if (use_hp_streams) {
-            launch_jacobi_kernel(a_new, a, l2_norm_d, (iy_start + 1), (iy_end - 1), nx, //2
+            launch_jacobi_kernel(a_new, a, l2_norm_d, (iy_start + 1), (iy_end - 1), nx,
                                  calculate_norm, compute_stream);
         }
 
         CUDA_RT_CALL(cudaStreamWaitEvent(push_top_stream, reset_l2norm_done, 0));
-        calculate_norm = (iter % nccheck) == 0 || (!csv && (iter % 100) == 0); //2
-        launch_jacobi_kernel(a_new, a, l2_norm_d, iy_start, (iy_start + 1), nx, calculate_norm, //1
+        calculate_norm = (iter % nccheck) == 0 || (!csv && (iter % 100) == 0);
+        launch_jacobi_kernel(a_new, a, l2_norm_d, iy_start, (iy_start + 1), nx, calculate_norm,
                              push_top_stream);
         CUDA_RT_CALL(cudaEventRecord(push_top_done, push_top_stream));
 
         CUDA_RT_CALL(cudaStreamWaitEvent(push_bottom_stream, reset_l2norm_done, 0));
-        launch_jacobi_kernel(a_new, a, l2_norm_d, (iy_end - 1), iy_end, nx, calculate_norm, //1
+        launch_jacobi_kernel(a_new, a, l2_norm_d, (iy_end - 1), iy_end, nx, calculate_norm,
                              push_bottom_stream);
         CUDA_RT_CALL(cudaEventRecord(push_bottom_done, push_bottom_stream));
 
         if (!use_hp_streams) {
-            launch_jacobi_kernel(a_new, a, l2_norm_d, (iy_start + 1), (iy_end - 1), nx, //2
+            launch_jacobi_kernel(a_new, a, l2_norm_d, (iy_start + 1), (iy_end - 1), nx,
                                  calculate_norm, compute_stream);
         }
-
 
         if (calculate_norm) {
             CUDA_RT_CALL(cudaStreamWaitEvent(compute_stream, push_top_done, 0));
@@ -344,62 +338,53 @@ int main(int argc, char* argv[]) {
                                          compute_stream));
         }
 
-        const int top = rank > 0 ? rank - 1 : (size - 1); //2
-        const int bottom = (rank + 1) % size; //2
-
+        const int top = rank > 0 ? rank - 1 : (size - 1);
+        const int bottom = (rank + 1) % size;
 
         // Apply periodic boundary conditions
         CUDA_RT_CALL(cudaStreamSynchronize(push_top_stream));
         PUSH_RANGE("MPI", 5)
-
-        MPI_CALL(MPI_Sendrecv(a_new + (long long)iy_start * nx, nx, MPI_REAL_TYPE, top, 0, 
-                              a_new + ((long long)iy_end * nx), nx, MPI_REAL_TYPE, bottom, 0, MPI_COMM_WORLD, //4
-                              MPI_STATUS_IGNORE)); 
-
+        MPI_CALL(MPI_Sendrecv(a_new + iy_start * nx_long, nx, MPI_REAL_TYPE, top, 0,
+                              a_new + (iy_end * nx_long), nx, MPI_REAL_TYPE, bottom, 0, MPI_COMM_WORLD,
+                              MPI_STATUS_IGNORE));
         CUDA_RT_CALL(cudaStreamSynchronize(push_bottom_stream));
-        MPI_CALL(MPI_Sendrecv(a_new + (long long)(iy_end - 1) * nx, nx, MPI_REAL_TYPE, bottom, 0, a_new, nx, //3
+        MPI_CALL(MPI_Sendrecv(a_new + (iy_end - 1) * nx_long, nx, MPI_REAL_TYPE, bottom, 0, a_new, nx,
                               MPI_REAL_TYPE, top, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-
         POP_RANGE
-
-
 
         if (calculate_norm) {
             CUDA_RT_CALL(cudaStreamSynchronize(compute_stream));
             MPI_CALL(MPI_Allreduce(l2_norm_h, &l2_norm, 1, MPI_REAL_TYPE, MPI_SUM, MPI_COMM_WORLD));
-            l2_norm = std::sqrt(l2_norm); //1
+            l2_norm = std::sqrt(l2_norm);
 
-            // if (!csv && 0 == rank && (iter % 100) == 0) {
-                // printf("%5d, %0.6f\n", iter, l2_norm);
-            // }
+            if (!csv && 0 == rank && (iter % 100) == 0) {
+                printf("%5d, %0.6f\n", iter, l2_norm);
+            }
         }
 
         std::swap(a_new, a);
-        iter++; //1
+        iter++;
     }
     double stop = MPI_Wtime();
     POP_RANGE
 
-
-
-    // CUDA_RT_CALL(cudaMemcpy(a_h + (long long)iy_start_global * (long long)nx, a + nx,
-    //                         std::min(((long long)(ny - iy_start_global)) * (long long)nx, (long long)chunk_size * nx) * sizeof(real),
-    //                         cudaMemcpyDeviceToHost));
-
-                            
+    CUDA_RT_CALL(cudaMemcpy(a_h + iy_start_global * nx_long, a + nx,
+                            std::min((ny - iy_start_global) * nx_long, chunk_size * nx_long) * sizeof(real),
+                            cudaMemcpyDeviceToHost));
 
     int result_correct = 1;
-    // for (int iy = iy_start_global; result_correct && (iy < iy_end_global); ++iy) {
-    //     for (int ix = 1; result_correct && (ix < (nx - 1)); ++ix) {
-    //         if (std::fabs(a_ref_h[iy * nx + ix] - a_h[iy * nx + ix]) > tol) {
-    //             fprintf(stderr,
-    //                     "ERROR on rank %d: a[%d * %d + %d] = %f does not match %f "
-    //                     "(reference)\n",
-    //                     rank, iy, nx, ix, a_h[iy * nx + ix], a_ref_h[iy * nx + ix]);
-    //             result_correct = 0;
-    //         }
-    //     }
-    // }
+    for (int iy = iy_start_global; result_correct && (iy < iy_end_global); ++iy) {
+        for (int ix = 1; result_correct && (ix < (nx - 1)); ++ix) {
+            if (std::fabs(a_ref_h[iy * nx_long + ix] - a_h[iy * nx_long + ix]) > tol) {
+                fprintf(stderr,
+                        "ERROR on rank %d: a[%d * %d + %d] = %f does not match %f "
+                        "(reference)\n",
+                        rank, iy, nx, ix, a_h[iy * nx_long + ix], a_ref_h[iy * nx_long + ix]);
+                result_correct = 0;
+            }
+        }
+    }
+
     int global_result_correct = 1;
     MPI_CALL(MPI_Allreduce(&result_correct, &global_result_correct, 1, MPI_INT, MPI_MIN,
                            MPI_COMM_WORLD));
@@ -407,30 +392,17 @@ int main(int argc, char* argv[]) {
 
     if (rank == 0 && result_correct) {
         if (csv) {
-            // printf("mpi_overlap, %d, %d, %d, %d, %d, 1, %f, %f\n", nx, ny, iter_max, nccheck, size,
-            //        (stop - start), runtime_serial);
+            printf("mpi_overlap, %d, %d, %d, %d, %d, 1, %f, %f %f\n", nx, ny, iter_max, nccheck, size,
+                   (stop - start), runtime_serial, runtime_serial / (size * (stop - start)) * 100);
         } else {
-            printf("%8.4f\n", (stop - start));
-
-            // printf(
-            //     "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
-            //     "efficiency: %8.2f \n",
-            //     ny, nx, runtime_serial, size, (stop - start), runtime_serial / (stop - start),
-            //     runtime_serial / (size * (stop - start)) * 100);
-            // printf("%d %.5f %.5f\n", size, (stop - start), runtime_serial / (size * (stop - start)) * 100);
-
-            
-            // int blocks = (nx + 32 - 1) / 32 * ((iy_end - iy_start) + 32 - 1) / 32;
-            // double flops_kernel = size * ((nx-2)* 1e-12 * chunk_size * iter * 23 + 8*iter*blocks*1e-12*1024) / (stop - start);
-
-            // double flops_loop = (iter * 21) * 1e-12 / (stop - start)*size;
-
-            // printf("%d %f\n", size, flops_kernel+flops_loop);
-            // printf("%d %f\n",size,  (nx-2)*chunk_size*1e-6*5*iter/(stop - start)*size);//MLUPS
+            printf("Num GPUs: %d.\n", size);
+            printf(
+                "%dx%d: 1 GPU: %8.4f s, %d GPUs: %8.4f s, speedup: %8.2f, "
+                "efficiency: %8.2f \n",
+                ny, nx, runtime_serial, size, (stop - start), runtime_serial / (stop - start),
+                runtime_serial / (size * (stop - start)) * 100);
         }
     }
-    // if(rank == 0) system("nvidia-smi");
-
     CUDA_RT_CALL(cudaEventDestroy(reset_l2norm_done));
     CUDA_RT_CALL(cudaEventDestroy(push_bottom_done));
     CUDA_RT_CALL(cudaEventDestroy(push_top_done));
@@ -444,10 +416,8 @@ int main(int argc, char* argv[]) {
     CUDA_RT_CALL(cudaFree(a_new));
     CUDA_RT_CALL(cudaFree(a));
 
-    // CUDA_RT_CALL(cudaFreeHost(a_h));
-    // CUDA_RT_CALL(cudaFreeHost(a_ref_h));
-    // free(a_h);
-    // free(a_ref_h);
+    CUDA_RT_CALL(cudaFreeHost(a_h));
+    CUDA_RT_CALL(cudaFreeHost(a_ref_h));
 
     MPI_CALL(MPI_Finalize());
     return (result_correct == 1) ? 0 : 1;
@@ -471,11 +441,13 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
     int iy_start = 1;
     int iy_end = (ny - 1);
 
-    CUDA_RT_CALL(cudaMallocManaged(&a, nx * ny * sizeof(real)));
-    CUDA_RT_CALL(cudaMallocManaged(&a_new, nx * ny * sizeof(real)));
+    long long nx_long = static_cast<long long>(nx);
 
-    CUDA_RT_CALL(cudaMemset(a, 0, nx * ny * sizeof(real)));
-    CUDA_RT_CALL(cudaMemset(a_new, 0, nx * ny * sizeof(real)));
+    CUDA_RT_CALL(cudaMalloc(&a, nx_long * ny * sizeof(real)));
+    CUDA_RT_CALL(cudaMalloc(&a_new, nx_long * ny * sizeof(real)));
+
+    CUDA_RT_CALL(cudaMemset(a, 0, nx_long * ny * sizeof(real)));
+    CUDA_RT_CALL(cudaMemset(a_new, 0, nx_long * ny * sizeof(real)));
 
     // Set diriclet boundary conditions on left and right boarder
     launch_initialize_boundaries(a, a_new, PI, 0, nx, ny, ny);
@@ -493,12 +465,12 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (print)
-    //     printf(
-    //         "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
-    //         "norm "
-    //         "check every %d iterations\n",
-    //         iter_max, ny, nx, nccheck);
+    if (print)
+        printf(
+            "Single GPU jacobi relaxation: %d iterations on %d x %d mesh with "
+            "norm "
+            "check every %d iterations\n",
+            iter_max, ny, nx, nccheck);
 
     int iter = 0;
     bool calculate_norm = true;
@@ -525,12 +497,12 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
         // Apply periodic boundary conditions
 
         CUDA_RT_CALL(cudaStreamWaitEvent(push_top_stream, compute_done, 0));
-        CUDA_RT_CALL(cudaMemcpyAsync(a_new, a_new + (iy_end - 1) * nx, nx * sizeof(real),
+        CUDA_RT_CALL(cudaMemcpyAsync(a_new, a_new + (iy_end - 1) * nx_long, nx_long * sizeof(real),
                                      cudaMemcpyDeviceToDevice, push_top_stream));
         CUDA_RT_CALL(cudaEventRecord(push_top_done, push_top_stream));
 
         CUDA_RT_CALL(cudaStreamWaitEvent(push_bottom_stream, compute_done, 0));
-        CUDA_RT_CALL(cudaMemcpyAsync(a_new + iy_end * nx, a_new + iy_start * nx, nx * sizeof(real),
+        CUDA_RT_CALL(cudaMemcpyAsync(a_new + iy_end * nx_long, a_new + iy_start * nx_long, nx_long * sizeof(real),
                                      cudaMemcpyDeviceToDevice, compute_stream));
         CUDA_RT_CALL(cudaEventRecord(push_bottom_done, push_bottom_stream));
 
@@ -538,7 +510,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
             CUDA_RT_CALL(cudaStreamSynchronize(compute_stream));
             l2_norm = *l2_norm_h;
             l2_norm = std::sqrt(l2_norm);
-            // if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
+            if (print && (iter % 100) == 0) printf("%5d, %0.6f\n", iter, l2_norm);
         }
 
         std::swap(a_new, a);
@@ -547,7 +519,7 @@ double single_gpu(const int nx, const int ny, const int iter_max, real* const a_
     POP_RANGE
     double stop = MPI_Wtime();
 
-    CUDA_RT_CALL(cudaMemcpy(a_ref_h, a, nx * ny * sizeof(real), cudaMemcpyDeviceToHost));
+    CUDA_RT_CALL(cudaMemcpy(a_ref_h, a, nx * nx_long * sizeof(real), cudaMemcpyDeviceToHost));
 
     CUDA_RT_CALL(cudaEventDestroy(push_bottom_done));
     CUDA_RT_CALL(cudaEventDestroy(push_top_done));

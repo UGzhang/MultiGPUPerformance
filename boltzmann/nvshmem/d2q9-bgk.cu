@@ -194,6 +194,30 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 void die(const char* message, const int line, const char* file);
 void usage(const char* exe);
 
+static void print(t_param* params, t_speed* cell)
+{
+    int nx = params->nx;
+
+    for (int i = 0; i < params->size; i++) {
+        if (i == params->rank) {
+            printf("### RANK %d "
+                   "#######################################################\n",
+                params->rank);
+            for (int j = 0; j < params->nyLocal + 2; j++) {
+                printf("%02d:", j);
+                for (int i = 0; i < nx; i++) {
+                    // for(int k =0; k<NSPEEDS; k++)
+                      printf("%12.6f ", cell[j * nx + i].speeds[2]);
+                  
+                }
+                printf("\n");
+            }
+            fflush(stdout);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -247,12 +271,8 @@ int main(int argc, char* argv[])
         
         CUDA_RT_CALL(cudaDeviceSynchronize());
         nvshmem_barrier_all();
-        
-        swap(&tmp_cells_d, &cells_d);
 
-        PUSH_RANGE("exchange", 3)
-        exchange_ghost_cells(&params, cells_d);
-        POP_RANGE
+        swap(&tmp_cells_d, &cells_d);
 
     }
 

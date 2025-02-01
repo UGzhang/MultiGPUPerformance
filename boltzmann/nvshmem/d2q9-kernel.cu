@@ -1,3 +1,6 @@
+#include <nvshmem.h>
+#include <nvshmemx.h>
+
 #define NSPEEDS         9
 
 typedef struct
@@ -57,7 +60,7 @@ void accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
 {
   if(params.rank == params.size - 1){
 
-    dim3 threadsPerBlock(64); // 每个线程块 16x16 个线程
+    dim3 threadsPerBlock(64);
     dim3 blocksPerGrid(32);
     float w1 = params.density * params.accel / 9.f;
     float w2 = params.density * params.accel / 36.f;
@@ -70,7 +73,7 @@ void accelerate_flow(const t_param params, t_speed*  cells, int*  obstacles)
 
 
 __global__ void propagate_rebound_collision_kernel
-(t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx, float omega, bool rankIsLast, float w1_flow, float w2_flow)
+(t_speed* cells, t_speed* tmp_cells, int* obstacles, int nyLocal, int nx, float omega, bool rankIsLast, float w1_flow, float w2_flow, int down, int up, int recv_up)
 {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
   const float w0 = 4.f / 9.f;  /* weighting factor */
@@ -210,10 +213,26 @@ __global__ void propagate_rebound_collision_kernel
                 tmp_cells[index].speeds[7] = tmp[5];
                 tmp_cells[index].speeds[8] = tmp[6];
       }
+
+      if (jj == 1){
+        int send_down = nx + ii;
+        nvshmem_float_put((float *)(tmp_cells+recv_up+ii), (float *)(tmp_cells+send_down), 9, down);
+
+      }
+      if(jj == nyLocal){
+        int send_up = nyLocal * nx + ii;               
+        int recv_down = ii;             
+        nvshmem_float_put((float *)(tmp_cells+recv_down), (float *)(tmp_cells+send_up), 9, up);
+      }
     }
 
   }
 
+}
+
+static int sizeOfRank(int rank, int size, int N)
+{
+    return N / size + ((N % size > rank) ? 1 : 0);
 }
 
 
@@ -225,8 +244,18 @@ void propagate_rebound_collision(const t_param params, t_speed* cells, t_speed* 
     float w1_flow = params.density * params.accel / 9.f;
     float w2_flow = params.density * params.accel / 36.f; 
 
+
+    int rank = params.rank;
+    int size = params.size;
+    int nx = params.nx;
+    int down = (rank == 0) ? (size - 1) : (rank - 1);
+    int up = (rank + 1) % size;  
+
+    int down_ny = sizeOfRank(down,size, params.ny);
+    int recv_up = (down_ny + 1) * nx;
+
     propagate_rebound_collision_kernel<<<blocksPerGrid, threadsPerBlock>>>
-          (cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega,rankIsLast,w1_flow,w2_flow);
+          (cells, tmp_cells, obstacles, params.nyLocal, params.nx, params.omega,rankIsLast,w1_flow,w2_flow, down, up, recv_up);
 
 
 

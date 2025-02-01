@@ -1,0 +1,15 @@
+salloc -N 1 --ntasks-per-node=2 --gres=gpu:2 --time=00:10:00 -p boost_usr_prod --mem=494000
+    mpirun -n $GPU --map-by ppr:$GPU:node ./jacobi  -neighborhood_sync -norm_overlap -use_block_comm -nx $N -ny $N -csv
+    nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 1000, 1, 2, 1, 4.573054, 6.326351 69.169859
+
+    srun --ntasks=${GPU} --gres=gpu:${GPU} ./jacobi -nx ${N} -ny ${N} -neighborhood_sync -norm_overlap -use_block_comm -csv
+    nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 1000, 1, 2, 1, 4.587863, 6.173517 67.280969
+
+
+
+salloc -N 1 --ntasks-per-node=2 --gres=gpu:2 --time=00:10:00 -p boost_usr_prod --mem=494000 --exclusive
+    mpirun -n $GPU --map-by ppr:$GPU:node ./jacobi  -neighborhood_sync -norm_overlap -use_block_comm -nx $N -ny $N -csv
+    nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 1000, 1, 2, 1, 4.524146, 6.336533 70.030157
+
+    srun --ntasks=${GPU} --gres=gpu:${GPU} ./jacobi -nx ${N} -ny ${N} -neighborhood_sync -norm_overlap -use_block_comm -csv
+    nvshmem-use_block_comm-norm_overlap-neighborhood_sync, 20480, 20480, 1000, 1, 2, 1, 1.681368, 3.500525 104.09754

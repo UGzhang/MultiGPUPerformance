@@ -57,14 +57,11 @@ __global__ void initialize_boundaries(real* __restrict__ const a_new, real* __re
                                       const int my_ny, const int ny) {
     for (int iy = blockIdx.x * blockDim.x + threadIdx.x; iy < my_ny; iy += blockDim.x * gridDim.x) {
         const real y0 = sin(2.0 * pi * (offset + iy) / (ny - 1));
-        long long index1 = (long)iy * (long)nx;
-        long long index2 = index1 + (long long)(nx - 1);
-        a[index1] = y0;
-        a[index2] = y0;
-        a_new[index1] = y0;
-        a_new[index2] = y0;
-
-        
+        long long index = (long long)iy * nx;
+        a[index] = y0;
+        a[index + (nx - 1)] = y0;
+        a_new[index] = y0;
+        a_new[index + (nx - 1)] = y0;
     }
 }
 
@@ -84,17 +81,18 @@ __global__ void jacobi_kernel(real* __restrict__ const a_new, const real* __rest
         BlockReduce;
     __shared__ typename BlockReduce::TempStorage temp_storage;
 #endif  // HAVE_CUB
-    long long iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start; //3
-    long long ix = blockIdx.x * blockDim.x + threadIdx.x + 1; //3
+    int iy = blockIdx.y * blockDim.y + threadIdx.y + iy_start;
+    int ix = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    long long index = (long long)iy * nx;
     real local_l2_norm = 0.0;
 
-    if (iy < iy_end && ix < (nx - 1)) { //1
-        const real new_val = 0.25 * (a[iy * (long long)nx + ix + 1] + a[iy * (long long)nx + ix - 1] + 
-                                     a[(iy + 1) * (long long)nx + ix] + a[(iy - 1) * (long long)nx + ix]); //16
-        a_new[iy * nx + ix] = new_val; //2
+    if (iy < iy_end && ix < (nx - 1)) {
+        const real new_val = 0.25 * (a[index + ix + 1] + a[index + ix - 1] +
+                                     a[index + nx  + ix] + a[index - nx + ix]);
+        a_new[index + ix] = new_val;
         if (calculate_norm) {
-            real residue = new_val - a[iy * (long long)nx + ix]; //3
-            local_l2_norm += residue * residue; //2
+            real residue = new_val - a[index + ix];
+            local_l2_norm += residue * residue;
         }
     }
     if (calculate_norm) {
@@ -102,7 +100,7 @@ __global__ void jacobi_kernel(real* __restrict__ const a_new, const real* __rest
         real block_l2_norm = BlockReduce(temp_storage).Sum(local_l2_norm);
         if (0 == threadIdx.y && 0 == threadIdx.x) atomicAdd(l2_norm, block_l2_norm);
 #else
-        atomicAdd(l2_norm, local_l2_norm); //1
+        atomicAdd(l2_norm, local_l2_norm);
 #endif  // HAVE_CUB
     }
 }

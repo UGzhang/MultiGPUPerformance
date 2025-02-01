@@ -590,6 +590,7 @@ int main(int argc, char* argv[]) {
                 printf("-neighborhood_sync");
             printf(", %d, %d, %d, %d, %d, 1, %f, %f %f\n", nx, ny, iter_max, nccheck, npes,
                    (stop - start), runtime_serial, runtime_serial / (npes * (stop - start)) * 100);
+
         } else {
             printf("Num GPUs: %d.\n", npes);
             printf(

@@ -29,4 +29,6 @@ data=1024
 
 # srun --ntasks=${GPU} --gres=gpu:${GPU} nsys profile --trace=mpi,cuda,nvtx ./d2q9-bgk "test/input_${data}x${data}.params" "test/obstacles_${data}x${data}.dat" 
 srun --ntasks=${GPU} --gres=gpu:${GPU} ./d2q9-bgk "test/input_${data}x${data}.params" "test/obstacles_${data}x${data}.dat" 
+# srun --ntasks=${GPU} --gres=gpu:${GPU} ./d2q9-bgk "test/input_8x16.params" "test/obstacles_8x16.dat" 
 
+gnuplot final_state.plt
