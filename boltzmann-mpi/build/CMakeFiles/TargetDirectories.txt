@@ -1,3 +1,0 @@
-/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/boltzmann-mpi.dir
-/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/edit_cache.dir
-/home/hpc/hesp/hesp112h/hpc-project/boltzmann/boltzmann-mpi/build/CMakeFiles/rebuild_cache.dir
