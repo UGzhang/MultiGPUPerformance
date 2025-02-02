@@ -1,4 +1,6 @@
 /*
+** Modified by Youyi Zhang in 2025
+**
 ** Code to implement a d2q9-bgk lattice boltzmann scheme.
 ** 'd2' inidates a 2-dimensional grid, and
 ** 'q9' indicates 9 velocities per grid cell.
@@ -194,30 +196,6 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 void die(const char* message, const int line, const char* file);
 void usage(const char* exe);
 
-static void print(t_param* params, t_speed* cell)
-{
-    int nx = params->nx;
-
-    for (int i = 0; i < params->size; i++) {
-        if (i == params->rank) {
-            printf("### RANK %d "
-                   "#######################################################\n",
-                params->rank);
-            for (int j = 0; j < params->nyLocal + 2; j++) {
-                printf("%02d:", j);
-                for (int i = 0; i < nx; i++) {
-                    // for(int k =0; k<NSPEEDS; k++)
-                      printf("%12.6f ", cell[j * nx + i].speeds[2]);
-                  
-                }
-                printf("\n");
-            }
-            fflush(stdout);
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-    }
-}
-
 
 int main(int argc, char* argv[])
 {
@@ -238,12 +216,8 @@ int main(int argc, char* argv[])
 
 
     /* parse the command line */
-    if (argc != 3)
-    {
-        usage(argv[0]);
-    }
-    else
-    {
+    if (argc != 3) usage(argv[0]);
+    else{
         paramfile = argv[1];
         obstaclefile = argv[2];
     }
@@ -259,31 +233,17 @@ int main(int argc, char* argv[])
     PUSH_RANGE("Boltzmann kernel (nvshmem)", 0)
     for (int tt = 0; tt < params.maxIters; tt++)
     {
-
-        PUSH_RANGE("accelerate", 1)
         accelerate_flow(params, cells_d, obstacles_d);
-        POP_RANGE
-
         // propagate+rebound+collision
-        PUSH_RANGE("combination", 2)
         propagate_rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
-        POP_RANGE
-        
         CUDA_RT_CALL(cudaDeviceSynchronize());
         nvshmem_barrier_all();
-
         swap(&tmp_cells_d, &cells_d);
-
     }
 
     MPI_CALL(MPI_Barrier(MPI_COMM_WORLD));
     double stop = MPI_Wtime();
     POP_RANGE
-
-    if (params.rank == 0)
-    {
-        printf("Runtime loop: %f s\n", stop-start);
-    }
 
     dataToHost(&params, cells_d, cells);
     if(params.nx <= 1024 && params.ny <= 1024) 
@@ -293,7 +253,7 @@ int main(int argc, char* argv[])
     if (params.rank == 0)
     {
         double stop_all = MPI_Wtime();
-        printf("Num GPUs: %d, Runtime all: %f s\n\n",params.size, stop_all-start_all);
+        printf("%d, %d, %d, %d, %f, %f\n", params.nx, params.ny, params.size, params.maxIters, (stop - start), (stop_all-start_all));
     }
 
     MPI_Finalize();
@@ -382,8 +342,8 @@ int init_nvshmem(t_param* params){
     } else {
         char symmetric_heap_size_str[100];
         sprintf(symmetric_heap_size_str, "%llu", required_symmetric_heap_size);
-        if (!params->rank)
-            printf("Setting environment variable NVSHMEM_SYMMETRIC_SIZE = %llu\n", required_symmetric_heap_size);
+        // if (!params->rank)
+        //     printf("Setting environment variable NVSHMEM_SYMMETRIC_SIZE = %llu\n", required_symmetric_heap_size);
         setenv("NVSHMEM_SYMMETRIC_SIZE", symmetric_heap_size_str, 1);
     }
 
@@ -483,21 +443,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
             (*cells_ptr)[ii + jj*params->nx].speeds[8] = w2;
         }
     }
-
-    // for (int jj = 0; jj < params->nyLocal + 2; jj++) {
-
-    // for (int ii = 0; ii < params->nx; ii++) {
-    //     for (int k = 0; k < 9; k++) {
-
-    //       // if(jj == 0)  (*cells_ptr)[ii].speeds[k] = (float)(k*100);
-    //       // else if(jj == params->nyLocal + 1 )  (*cells_ptr)[jj * params->nx + ii].speeds[k] = (float)(k*100);
-    //         // 使用 ii, jj, k 的组合来初始化，确保每个网格点不同
-    //       // else 
-    //       (*cells_ptr)[jj * params->nx + ii].speeds[k] = (float)(ii + jj*params->nx + k*100+params->rank*1000+k) * 0.001;
-    //     }
-
-    // }
-    // }
 
 
     CUDA_RT_CALL(cudaMallocHost((void**)obstacles_ptr, sizeof(int) * sizeLocal));
