@@ -1,4 +1,5 @@
 /* Copyright (c) 2017-2018, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, Youyi Zhang. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -223,11 +224,11 @@ int main(int argc, char* argv[]) {
 
     CUDA_RT_CALL(cudaDeviceSynchronize());
 
-    // if (!csv)
-    //     printf(
-    //         "Jacobi relaxation: %d iterations on %d x %d mesh with norm check "
-    //         "every %d iterations\n",
-    //         iter_max, ny, nx, nccheck);
+    if (!csv)
+        printf(
+            "Jacobi relaxation: %d iterations on %d x %d mesh with norm check "
+            "every %d iterations\n",
+            iter_max, ny, nx, nccheck);
 
     constexpr int dim_block_x = 32;
     constexpr int dim_block_y = 32;
@@ -274,7 +275,7 @@ int main(int argc, char* argv[]) {
             l2_norm_greater_than_tol = (l2_norms[prev] > tol);
 
             if (!csv && (iter % 100) == 0) {
-                // printf("%5d, %0.6f\n", iter, l2_norms[prev]);
+                printf("%5d, %0.6f\n", iter, l2_norms[prev]);
             }
 
             // reset everything for next iteration
