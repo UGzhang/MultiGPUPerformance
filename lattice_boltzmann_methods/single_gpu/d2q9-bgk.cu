@@ -1,4 +1,6 @@
 /*
+** Modified by Youyi Zhang in 2025
+**
 ** Code to implement a d2q9-bgk lattice boltzmann scheme.
 ** 'd2' inidates a 2-dimensional grid, and
 ** 'q9' indicates 9 velocities per grid cell.
@@ -186,13 +188,10 @@ int main(int argc, char* argv[])
     write_values(params, cells, obstacles, av_vels);
   finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels, &cells_d, &tmp_cells_d,& obstacles_d );
 
-
   tot_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
   /* write final values and free memory */
-  printf("==done==\n");
-  printf("Elapsed Compute time:\t\t\t%.6lf (s)\n", comp_toc - comp_tic);
-  printf("Elapsed Total time:\t\t\t%.6lf (s)\n",   tot_toc  - tot_tic);
+  printf("%d, %d, %d, %d, %f, %f\n", params.nx, params.ny, params.size, params.maxIters, (comp_toc - comp_tic), (tot_toc  - tot_tic));
 
   return EXIT_SUCCESS;
 }
