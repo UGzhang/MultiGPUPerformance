@@ -1,4 +1,5 @@
 /* Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2025, Youyi Zhang. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -138,6 +139,11 @@ T get_argval(char** begin, char** end, const std::string& arg, const T default_v
     return argval;
 }
 
+static int sizeOfRank(int rank, int size, int N)
+{
+    return N / size + ((N % size > rank) ? 1 : 0);
+}
+
 bool get_arg(char** begin, char** end, const std::string& arg) {
     char** itr = std::find(begin, end, arg);
     if (itr != end) {
@@ -197,21 +203,7 @@ int main(int argc, char* argv[]) {
     CUDA_RT_CALL(cudaMallocHost(&a_h, nx * ny * sizeof(real)));
     double runtime_serial = single_gpu(nx, ny, iter_max, a_ref_h, nccheck, !csv && (0 == rank));
 
-    // ny - 2 rows are distributed amongst `size` ranks in such a way
-    // that each rank gets either (ny - 2) / size or (ny - 2) / size + 1 rows.
-    // This optimizes load balancing when (ny - 2) % size != 0
-    int chunk_size;
-    int chunk_size_low = (ny - 2) / size;
-    int chunk_size_high = chunk_size_low + 1;
-    // To calculate the number of ranks that need to compute an extra row,
-    // the following formula is derived from this equation:
-    // num_ranks_low * chunk_size_low + (size - num_ranks_low) * (chunk_size_low + 1) = ny - 2
-    int num_ranks_low = size * chunk_size_low + size -
-                        (ny - 2);  // Number of ranks with chunk_size = chunk_size_low
-    if (rank < num_ranks_low)
-        chunk_size = chunk_size_low;
-    else
-        chunk_size = chunk_size_high;
+    int chunk_size = sizeOfRank(rank, size, ny-2);
 
     real* a;
     CUDA_RT_CALL(cudaMalloc(&a, nx * (chunk_size + 2) * sizeof(real)));
@@ -221,18 +213,14 @@ int main(int argc, char* argv[]) {
     CUDA_RT_CALL(cudaMemset(a, 0, nx * (chunk_size + 2) * sizeof(real)));
     CUDA_RT_CALL(cudaMemset(a_new, 0, nx * (chunk_size + 2) * sizeof(real)));
 
-    // Calculate local domain boundaries
-    int iy_start_global;  // My start index in the global array
-    if (rank < num_ranks_low) {
-        iy_start_global = rank * chunk_size_low + 1;
-    } else {
-        iy_start_global =
-            num_ranks_low * chunk_size_low + (rank - num_ranks_low) * chunk_size_high + 1;
-    }
-    int iy_end_global = iy_start_global + chunk_size - 1;  // My last index in the global array
 
-    int iy_start = 1;
-    int iy_end = iy_start + chunk_size;
+    int iy_start_global = 1;
+    int iy_end_global = chunk_size;
+
+    for(int i = rank-1; i >= 0; i--){
+        iy_start_global += sizeOfRank(i, size, ny-2);
+        iy_end_global += sizeOfRank(i, size, ny-2);
+    }
 
     // Set diriclet boundary conditions on left and right boarder
     launch_initialize_boundaries(a, a_new, PI, iy_start_global - 1, nx, (chunk_size + 2), ny);
@@ -267,6 +255,9 @@ int main(int argc, char* argv[]) {
     CUDA_RT_CALL(cudaMalloc(&l2_norm_d, sizeof(real)));
     real* l2_norm_h;
     CUDA_RT_CALL(cudaMallocHost(&l2_norm_h, sizeof(real)));
+
+    int iy_start = 1;
+    int iy_end = iy_start + chunk_size;
 
     PUSH_RANGE("MPI_Warmup", 5)
     for (int i = 0; i < 10; ++i) {
