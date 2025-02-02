@@ -26,22 +26,6 @@ make
 
 N=20480
 
-# 强制使用IPoIB地址
-export NCCL_IB_HCA=mlx5_*
-
-# 禁用SHARP以排除兼容性问题
-export NCCL_IB_DISABLE=1
-export NCCL_P2P_DISABLE=1
-export NCCL_SOCKET_IFNAME=ib0
-
-# 指定通信接口
-#export NCCL_SOCKET_IFNAME=ib0
-
-#export NCCL_DEBUG=TRACE
-
-export NCCL_IB_HCA=mlx5_0
-
-
 for GPU in {1..4}
 do
     for i in {1..5}; 
