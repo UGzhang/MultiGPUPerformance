@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A EUHPC_D14_001
 #SBATCH -p boost_usr_prod
-#SBATCH --time 00:05:00     # format: HH:MM:SS
+#SBATCH --time 00:10:00     # format: HH:MM:SS
 #SBATCH -N 4                # 1 node
 #SBATCH --ntasks-per-node=4 # 1 tasks out of 32
 #SBATCH --gres=gpu:4        # 1 gpus per node out of 4
@@ -32,11 +32,11 @@ done
 
 for NODE in {2..4}
 do
-TASKS=$(( ${NODE} * 4 ))
-for i in {1..5}; 
-do
-    srun -N ${NODE} --ntasks=${TASKS} --gres=gpu:4 ./jacobi -use_hp_streams -nx ${N} -ny ${N}  -csv >> data/${N}-${TASKS}.csv
-done
+    TASKS=$(( ${NODE} * 4 ))
+    for i in {1..5}; 
+    do
+        srun -N ${NODE} --ntasks=${TASKS} --gres=gpu:4 ./jacobi -use_hp_streams -nx ${N} -ny ${N}  -csv >> data/${N}-${TASKS}.csv
+    done
 done
 
 
