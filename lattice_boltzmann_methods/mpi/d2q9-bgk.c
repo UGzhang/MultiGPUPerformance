@@ -1,4 +1,6 @@
 /*
+** Modified by Youyi Zhang in 2025
+**
 ** Code to implement a d2q9-bgk lattice boltzmann scheme.
 ** 'd2' inidates a 2-dimensional grid, and
 ** 'q9' indicates 9 velocities per grid cell.
@@ -193,31 +195,6 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 void die(const char* message, const int line, const char* file);
 void usage(const char* exe);
 
-
-static void print(t_param* params, t_speed* cell)
-{
-    int nx = params->nx;
-
-    for (int i = 0; i < params->size; i++) {
-        if (i == params->rank) {
-            printf("### RANK %d "
-                   "#######################################################\n",
-                params->rank);
-            for (int j = 0; j < params->nyLocal + 2; j++) {
-                printf("%02d:", j);
-                for (int i = 0; i < nx; i++) {
-                    // for(int k =0; k<NSPEEDS; k++)
-                      printf("%12.6f ", cell[j * nx + i].speeds[2]);
-                  
-                }
-                printf("\n");
-            }
-            fflush(stdout);
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-    }
-}
-
 int main(int argc, char* argv[])
 {
     char*    paramfile = NULL;    /* name of the input parameter file */
@@ -237,19 +214,14 @@ int main(int argc, char* argv[])
 
 
     /* parse the command line */
-    if (argc != 3)
-    {
-        usage(argv[0]);
-    }
-    else
-    {
+    if (argc != 3) usage(argv[0]);
+    else{
         paramfile = argv[1];
         obstaclefile = argv[2];
     }
 
     MPI_Init(&argc, &argv);
     double start_all = MPI_Wtime();
-
 
     initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels, &obstacles_all);
     dataToDevices(&params, &cells_d, &tmp_cells_d, &obstacles_d, &av_vels_d, &cells, &obstacles);
@@ -258,14 +230,9 @@ int main(int argc, char* argv[])
     PUSH_RANGE("Boltzmann kernel (mpi)", 0)
     for (int tt = 0; tt < params.maxIters; tt++)
     {
-
-        PUSH_RANGE("accelerate", 1)
         accelerate_flow(params, cells_d, obstacles_d);
-        POP_RANGE
         // propagate+rebound+collision
-        PUSH_RANGE("combination", 2)
         propagate_rebound_collision(params, cells_d, tmp_cells_d, obstacles_d);
-        POP_RANGE
         cudaDeviceSynchronize();
         swap(&tmp_cells_d, &cells_d);
         exchange_ghost_cells(&params, cells_d);
@@ -275,11 +242,6 @@ int main(int argc, char* argv[])
     POP_RANGE
     double stop = MPI_Wtime();
 
-    if (params.rank == 0)
-    {
-        printf("Runtime loop: %f s\n", stop-start);
-    }
-
     dataToHost(&params, cells_d, cells);
     if(params.nx <= 1024 && params.ny <= 1024) 
         collectResult(params, cells, av_vels, obstacles_all);
@@ -288,7 +250,7 @@ int main(int argc, char* argv[])
     if (params.rank == 0)
     {
         double stop_all = MPI_Wtime();
-        printf("Num GPUs: %d, Runtime all: %f s\n\n",params.size, stop_all-start_all);
+        printf("%d, %d, %d, %d, %f, %f\n", params.nx, params.ny, params.size, params.maxIters, (stop - start), (stop_all-start_all));
     }
 
     MPI_Finalize();
@@ -417,22 +379,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
             (*cells_ptr)[ii + jj*params->nx].speeds[8] = w2;
         }
     }
-
-    // for (int jj = 0; jj < params->nyLocal + 2; jj++) {
-
-    // for (int ii = 0; ii < params->nx; ii++) {
-    //     for (int k = 0; k < 9; k++) {
-
-    //       // if(jj == 0)  (*cells_ptr)[ii].speeds[k] = (float)(k*100);
-    //       // else if(jj == params->nyLocal + 1 )  (*cells_ptr)[jj * params->nx + ii].speeds[k] = (float)(k*100);
-    //         // 使用 ii, jj, k 的组合来初始化，确保每个网格点不同
-    //       // else 
-    //       (*cells_ptr)[jj * params->nx + ii].speeds[k] = (float)(ii + jj*params->nx + k*100+params->rank*1000+k) * 0.001;
-    //     }
-
-    // }
-    // }
-
 
     CUDA_RT_CALL(cudaMallocHost((void**)obstacles_ptr, sizeof(int) * sizeLocal));
     memset(*obstacles_ptr, 0, sizeof(int) * sizeLocal);
@@ -601,8 +547,6 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
                 pressure = local_density * c_sq;
             }
 
-            // if(ii == 1111 && jj ==11111) printf("%.12E\n", u);
-
             /* write to file */
             fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", ii, jj, u_x, u_y, u, pressure, obstacles[ii + params.nx * jj]);
         }
@@ -763,11 +707,9 @@ void exchange_ghost_cells(const t_param* params, t_speed* cells) {
 
     MPI_Request request[4];
 
-    // 发送到下方 (down)，接收来自上方 (up)
     MPI_CALL(MPI_Isend(cells + send_down, nx, MPI_T_SPEED, down, 0, MPI_COMM_WORLD, &request[0]));
     MPI_CALL(MPI_Irecv(cells + recv_up, nx, MPI_T_SPEED, up, 0, MPI_COMM_WORLD, &request[1]));
 
-    // 发送到上方 (up)，接收来自下方 (down)
     MPI_CALL(MPI_Isend(cells + send_up, nx, MPI_T_SPEED, up, 1, MPI_COMM_WORLD, &request[2]));
     MPI_CALL(MPI_Irecv(cells + recv_down, nx, MPI_T_SPEED, down, 1, MPI_COMM_WORLD, &request[3]));
 
